@@ -1,0 +1,52 @@
+location: __LOCATION__
+name: __APP_NAME__
+identity:
+  type: UserAssigned
+  userAssignedIdentities:
+    __USER_ASSIGNED_IDENTITY_RESOURCE_ID__: {}
+properties:
+  managedEnvironmentId: __MANAGED_ENVIRONMENT_ID__
+  configuration:
+    activeRevisionsMode: Single
+__REGISTRIES_BLOCK__
+    ingress:
+      external: true
+      targetPort: 18789
+      transport: auto
+      allowInsecure: false
+    secrets:
+      - name: gateway-token
+        value: __GATEWAY_TOKEN__
+      - name: openai-api-key
+        value: __OPENAI_API_KEY__
+  template:
+    containers:
+      - name: openclaw
+        image: __OPENCLAW_IMAGE__
+        env:
+          - name: OPENCLAW_PUBLIC_PORT
+            value: "18789"
+          - name: OPENCLAW_INTERNAL_PORT
+            value: "18790"
+          - name: OPENCLAW_GATEWAY_BIND
+            value: lan
+          - name: OPENCLAW_GATEWAY_PORT
+            value: "18790"
+          - name: OPENCLAW_GATEWAY_TOKEN
+            secretRef: gateway-token
+          - name: OPENAI_API_KEY
+            secretRef: openai-api-key
+          - name: AZURE_OPENAI_API_KEY
+            secretRef: openai-api-key
+          - name: OPENCLAW_CONFIG_DIR
+            value: /tmp/openclaw
+          - name: OPENCLAW_WORKSPACE_DIR
+            value: /tmp/openclaw/workspace
+          - name: OPENCLAW_CONFIG_PATH
+            value: /opt/openclaw-aca/openclaw.cloud.aca.json5
+        resources:
+          cpu: 1.0
+          memory: 2Gi
+    scale:
+      minReplicas: 1
+      maxReplicas: 1

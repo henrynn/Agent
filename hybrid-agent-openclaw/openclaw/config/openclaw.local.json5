@@ -1,0 +1,60 @@
+{
+  gateway: {
+    bind: "lan",
+    port: 18789,
+    auth: {
+      mode: "token",
+    },
+    controlUi: {
+      allowedOrigins: [
+        "http://127.0.0.1:18789",
+        "http://localhost:18789",
+      ],
+    },
+    http: {
+      endpoints: {
+        responses: {
+          enabled: true,
+        },
+      },
+    },
+  },
+
+  models: {
+    mode: "merge",
+    providers: {
+      azure: {
+        api: "openai-responses",
+        baseUrl: "https://smartapims.azure-api.net/openai",
+        apiKey: "${AZURE_OPENAI_API_KEY}",
+        models: [
+          {
+            id: "gpt-5.4",
+            name: "gpt-5.4",
+            reasoning: true,
+          },
+        ],
+      },
+    },
+  },
+
+  agents: {
+    defaults: {
+      workspace: "/mnt/openclaw/workspace",
+      model: {
+        primary: "azure/gpt-5.4",
+      },
+      thinkingDefault: "medium",
+      sandbox: {
+        mode: "all",
+        backend: "docker",
+        scope: "agent",
+        workspaceAccess: "rw",
+      },
+    },
+  },
+
+  tools: {
+    profile: "coding",
+  },
+}

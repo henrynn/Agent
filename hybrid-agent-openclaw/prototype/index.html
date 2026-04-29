@@ -1,0 +1,207 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Hybrid Agent Control Center</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+  <div class="app-shell">
+    <aside class="sidebar">
+      <div class="sidebar__brand">
+        <div class="brand-mark">HA</div>
+        <div>
+          <p class="eyebrow">Operations Console</p>
+          <h1>Hybrid Agent</h1>
+        </div>
+      </div>
+
+      <section class="sidebar__section">
+        <div class="section-heading">
+          <span>Fleet Pulse</span>
+          <span id="fleet-clock" class="muted">--:--:--</span>
+        </div>
+        <div class="fleet-grid">
+          <article class="fleet-card">
+            <span class="fleet-card__label">Active Tasks</span>
+            <strong id="active-count">0</strong>
+          </article>
+          <article class="fleet-card">
+            <span class="fleet-card__label">Cloud Runs</span>
+            <strong id="cloud-count">0</strong>
+          </article>
+          <article class="fleet-card">
+            <span class="fleet-card__label">Blocked</span>
+            <strong id="blocked-count">0</strong>
+          </article>
+        </div>
+      </section>
+
+      <section class="sidebar__section">
+        <div class="section-heading">
+          <span>Tasks</span>
+          <span class="muted">Switch context</span>
+        </div>
+        <div id="task-list" class="task-list" role="tablist" aria-label="Task list"></div>
+      </section>
+    </aside>
+
+    <main class="workspace">
+      <header class="workspace__header">
+        <div>
+          <p class="eyebrow">Execution Overview</p>
+          <h2 id="task-title">Loading task</h2>
+          <p id="task-summary" class="header-copy"></p>
+          <p id="connection-status" class="header-note">Connecting to orchestrator...</p>
+        </div>
+        <div class="header-actions">
+          <button id="seed-demo-btn" class="btn btn--ghost">Seed demo run</button>
+          <button id="checkpoint-btn" class="btn btn--ghost">Create checkpoint</button>
+          <button id="handoff-btn" class="btn btn--primary">Switch to cloud</button>
+        </div>
+      </header>
+      <div id="action-message" class="action-message">Waiting for orchestrator data.</div>
+
+      <section class="hero-grid">
+        <article class="hero-panel hero-panel--focus">
+          <div class="panel-heading">
+            <span>Runtime Ownership</span>
+            <span id="task-status-chip" class="status-chip">Running</span>
+          </div>
+          <div class="runtime-hero">
+            <div class="runtime-hero__meter">
+              <svg viewBox="0 0 120 120" class="progress-ring" aria-hidden="true">
+                <circle cx="60" cy="60" r="46" class="progress-ring__track"></circle>
+                <circle cx="60" cy="60" r="46" class="progress-ring__value" id="progress-ring"></circle>
+              </svg>
+              <div class="runtime-hero__meter-copy">
+                <strong id="task-progress">0%</strong>
+                <span>completion</span>
+              </div>
+            </div>
+            <div class="runtime-hero__stats">
+              <div class="metric">
+                <span class="metric__label">Active runtime</span>
+                <strong id="runtime-owner">Local</strong>
+              </div>
+              <div class="metric">
+                <span class="metric__label">Current step</span>
+                <strong id="current-step">Step</strong>
+              </div>
+              <div class="metric">
+                <span class="metric__label">Lease expires</span>
+                <strong id="lease-expiry">--</strong>
+              </div>
+              <div class="metric">
+                <span class="metric__label">Latest checkpoint</span>
+                <strong id="checkpoint-id">--</strong>
+              </div>
+            </div>
+          </div>
+        </article>
+
+        <article class="hero-panel">
+          <div class="panel-heading">
+            <span>Switch Readiness</span>
+            <span id="readiness-chip" class="pill">Stable</span>
+          </div>
+          <ul id="readiness-list" class="signal-list"></ul>
+        </article>
+
+        <article class="hero-panel">
+          <div class="panel-heading">
+            <span>Execution Health</span>
+            <span class="pill pill--dark">Live</span>
+          </div>
+          <div class="health-grid">
+            <div class="health-stat">
+              <span>Heartbeat</span>
+              <strong id="heartbeat-age">0s ago</strong>
+            </div>
+            <div class="health-stat">
+              <span>Cost burn</span>
+              <strong id="cost-burn">$0.00</strong>
+            </div>
+            <div class="health-stat">
+              <span>Artifacts</span>
+              <strong id="artifact-count">0</strong>
+            </div>
+            <div class="health-stat">
+              <span>Retry risk</span>
+              <strong id="retry-risk">Low</strong>
+            </div>
+          </div>
+        </article>
+      </section>
+
+      <section class="panel runtime-center">
+        <div class="panel-heading">
+          <span>Runtime Control Center</span>
+          <button id="refresh-runtime-btn" class="btn btn--ghost">Refresh runtime status</button>
+        </div>
+        <div id="runtime-service-grid" class="runtime-service-grid"></div>
+      </section>
+
+      <section class="content-grid">
+        <article class="panel panel--wide">
+          <div class="panel-heading">
+            <span>Execution Plan</span>
+            <span class="muted">Checkpoint-safe step graph</span>
+          </div>
+          <div id="plan-board" class="plan-board"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <span>Runtime Topology</span>
+            <span class="muted">Local and cloud parity</span>
+          </div>
+          <div id="topology-card" class="topology"></div>
+        </article>
+
+        <article class="panel panel--wide">
+          <div class="panel-heading">
+            <span>Live Activity</span>
+            <span class="muted">Event stream</span>
+          </div>
+          <div id="event-stream" class="event-stream"></div>
+        </article>
+
+        <article class="panel">
+          <div class="panel-heading">
+            <span>Checkpoints</span>
+            <span class="muted">Resumable anchors</span>
+          </div>
+          <div id="checkpoint-list" class="checkpoint-list"></div>
+        </article>
+      </section>
+    </main>
+  </div>
+
+  <template id="task-item-template">
+    <button class="task-item" type="button" role="tab">
+      <div class="task-item__top">
+        <div>
+          <strong class="task-item__title"></strong>
+          <p class="task-item__meta"></p>
+        </div>
+        <span class="task-item__runtime"></span>
+      </div>
+      <div class="task-item__bottom">
+        <div class="task-item__progress-track">
+          <div class="task-item__progress-value"></div>
+        </div>
+        <div class="task-item__footer">
+          <span class="task-item__status"></span>
+          <span class="task-item__eta"></span>
+        </div>
+      </div>
+    </button>
+  </template>
+
+  <script src="./app.js"></script>
+</body>
+</html>

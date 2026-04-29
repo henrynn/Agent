@@ -1,0 +1,62 @@
+{
+  gateway: {
+    mode: "local",
+    // ACA wrapper image terminates the public listener on 18789 and forwards
+    // traffic to the in-container gateway port below. Keeping the inner gateway
+    // on a separate port avoids the current bind-to-loopback issue.
+    bind: "lan",
+    port: 18790,
+    auth: {
+      mode: "token",
+    },
+    controlUi: {
+      // ACA gives you a default public FQDN only after the app is created.
+      // For the first MVP deploy we allow Host-header fallback so the Control UI
+      // can boot before you pin an explicit origin. Tighten this after first deploy.
+      dangerouslyAllowHostHeaderOriginFallback: true,
+    },
+    http: {
+      endpoints: {
+        responses: {
+          enabled: true,
+        },
+      },
+    },
+  },
+
+  models: {
+    mode: "merge",
+    providers: {
+      azure: {
+        api: "openai-responses",
+        baseUrl: "https://smartapims.azure-api.net/openai",
+        apiKey: "${AZURE_OPENAI_API_KEY}",
+        models: [
+          {
+            id: "gpt-5.4",
+            name: "gpt-5.4",
+            reasoning: true,
+          },
+        ],
+      },
+    },
+  },
+
+  agents: {
+    defaults: {
+      workspace: "/tmp/openclaw/workspace",
+      model: {
+        primary: "azure/gpt-5.4",
+      },
+      thinkingDefault: "medium",
+      sandbox: {
+        // ACA does not expose a host Docker daemon, so the Docker backend is not viable here.
+        mode: "off",
+      },
+    },
+  },
+
+  tools: {
+    profile: "coding",
+  },
+}

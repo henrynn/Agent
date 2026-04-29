@@ -1,0 +1,8 @@
+.azure/
+deploy/openclaw/.env.cloud
+deploy/openclaw/local/.env
+deploy/openclaw/local/state/
+deploy/openclaw/aca/containerapp.rendered.yaml
+services/orchestrator/orchestrator.stdout.log
+services/orchestrator/orchestrator.stderr.log
+services/orchestrator/data/orchestrator-state.json

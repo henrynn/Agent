@@ -1,0 +1,20 @@
+services:
+  openclaw:
+    image: ${OPENCLAW_IMAGE}
+    container_name: openclaw-local
+    restart: unless-stopped
+    ports:
+      - "${OPENCLAW_GATEWAY_PORT:-18789}:18789"
+    environment:
+      OPENCLAW_GATEWAY_BIND: lan
+      OPENCLAW_GATEWAY_PORT: 18789
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN}
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      AZURE_OPENAI_API_KEY: ${AZURE_OPENAI_API_KEY}
+      OPENCLAW_CONFIG_DIR: /mnt/openclaw
+      OPENCLAW_WORKSPACE_DIR: /mnt/openclaw/workspace
+      OPENCLAW_CONFIG_PATH: /mnt/openclaw/openclaw.json
+    volumes:
+      - ./state:/mnt/openclaw
+      - ../../../openclaw/config/openclaw.local.json5:/mnt/openclaw/openclaw.json:ro
+      - /var/run/docker.sock:/var/run/docker.sock
