@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "hybrid-orchestrator": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["dist/local-orchestrator/index.js"],
+      "cwd": "${workspaceFolder}",
+      "env": {
+        "LOCAL_ORCHESTRATOR_PORT": "7071",
+        "CLOUD_AGENT_BASE_URL": "http://127.0.0.1:8787"
+      }
+    }
+  }
+}

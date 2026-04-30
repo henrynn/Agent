@@ -1,0 +1,46 @@
+{
+  "name": "ghcopilot-hybrid-orch",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently \"npm run dev:cloud\" \"npm run dev:local\" \"npm run dev:web\"",
+    "dev:cloud": "tsx watch src/cloud-agent/index.ts",
+    "dev:local": "tsx watch src/local-orchestrator/index.ts",
+    "dev:web": "vite --config apps/control-panel/vite.config.ts",
+    "build": "npm run build:cloud && npm run build:local && npm run build:web",
+    "build:cloud": "tsup src/cloud-agent/index.ts --format esm --out-dir dist/cloud-agent --clean",
+    "build:local": "tsup src/local-orchestrator/index.ts --format esm --out-dir dist/local-orchestrator --clean",
+    "build:web": "vite build --config apps/control-panel/vite.config.ts",
+    "start:cloud": "node dist/cloud-agent/index.js",
+    "start:local": "node dist/local-orchestrator/index.js",
+    "test": "vitest run",
+    "smoke": "node scripts/smoke-test.mjs",
+    "smoke:mock": "cross-env HYBRID_AGENT_MOCK_MODE=true node scripts/smoke-test.mjs"
+  },
+  "dependencies": {
+    "@github/copilot-sdk": "^0.3.0",
+    "@modelcontextprotocol/sdk": "^1.29.0",
+    "cors": "^2.8.5",
+    "express": "^5.1.0",
+    "pptxgenjs": "^4.0.1",
+    "react": "^19.2.0",
+    "react-dom": "^19.2.0",
+    "zod": "^4.1.12"
+  },
+  "devDependencies": {
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.3",
+    "@types/node": "^24.9.1",
+    "@types/react": "^19.2.2",
+    "@types/react-dom": "^19.2.2",
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "cross-env": "^10.1.0",
+    "tsup": "^8.5.0",
+    "tsx": "^4.20.6",
+    "typescript": "^5.9.3",
+    "vite": "^7.1.12",
+    "vitest": "^3.2.4"
+  }
+}
