@@ -1,149 +1,168 @@
-# research-cua
+# Agent Harness for Computer Control
 
-一个用于研究和演示“多范式计算机控制/信息提取”的实验仓库。
+> 架构深度对比：GUI 视觉操控、浏览器自动化、终端/代码执行三大家族
+>
+> 基于 `agent-harness-report.html` 生成（2026-07-13）
 
-## 先看结论（TL;DR）
+详细版项目说明请见 [README.detail.md](README.detail.md)。
 
-### 三条结论
+---
 
-- 能用 API/MCP 就不要点 UI：通常最快、最稳、最省成本。
-- 浏览器任务优先 DOM/CDP：实测里 CDP 路径 token 最低、字段完整、综合性价比最高。
-- 视觉范式是“通用兜底”而非默认首选：覆盖最广，但延迟和 payload 成本最高，核心瓶颈是 GUI grounding。
+## 00. 核心洞察
 
-### 同任务五路实测（HN Top 10）
+所有 computer-control agent 的本质是同一件事：
 
-| 路径 | 感知形态 | 延迟 (ms) | LLM tokens | Payload (B) | 关键观察 |
-|---|---|---:|---:|---:|---|
-| API/MCP | 结构化 JSON | 1056 | 294 | 11172 | 最稳、最易维护，字段缺失 0% |
-| DOM 正则 | 原始 HTML | 815 | 8689（裁剪后 291） | 34754 | 快，但结构脆弱 |
-| CDP 页内提取 | DOM evaluate | 1220 | 288 | 1153 | token 与 payload 最低，综合赢家 |
-| a11y AX 树 | 语义控件树 | 1429 | 13812 | 55249 | 全树不裁剪时 token 最高 |
-| 视觉截图 | PNG 像素 | 3043 | 1536 | 123661 | 通用性最高，但最慢最重 |
+- 一个被增强的 LLM（工具 + 检索 + 记忆）运行「感知 -> 推理 -> 动作」反馈循环
+- 每一步都通过环境返回的 ground truth 做纠错
 
-### 融合总结（结合 agent-harness-report）
+三大家族真正的分野不在“是否用 LLM”，而在：
 
-`agent-computer-control-report.html` 偏“范式与实测”，`agent-harness-report.html` 偏“家族级方法论”。两者合并后的决策是：
+- 感知层是什么
+- grounding（定位）机制是什么
 
-| 维度 | ① GUI 视觉操控 | ② 浏览器自动化 | ③ 终端/代码 harness |
+一句话总览：
+
+- 三者不是竞品，而是感知层光谱
+- 能拿文本就别碰 DOM，能拿 DOM 就别数像素
+- 视觉操控是最后手段的通用层，代价是 grounding 不确定性
+- 最佳实践是分层混合：结构化部分走终端/浏览器 harness，封闭 GUI 才回退视觉
+
+---
+
+## 01. 三大架构家族
+
+### 家族 ①：GUI 视觉操控
+
+代表：Anthropic Computer Use、OpenAI CUA/Operator、UI-TARS
+
+- 感知：纯截图（周期帧）
+- 动作：虚拟鼠标 + 键盘
+
+### 家族 ②：浏览器自动化
+
+代表：browser-use、Skyvern、Playwright MCP
+
+- 感知：DOM/CDP 结构化页面数据（截图可选）
+- 动作：高层交互（click/fill/type 等）
+
+### 家族 ③：终端 / 代码 harness
+
+代表：Claude Code、OpenAI Codex CLI、OpenHands
+
+- 感知：纯文本与执行结果
+- 动作：shell 命令 + 文件编辑 + 工具调用
+
+---
+
+## 02. 跨维度对比矩阵
+
+| 维度 | ① GUI 视觉操控 | ② 浏览器自动化 | ③ 终端 / 代码 |
 |---|---|---|---|
-| 通用性 | 最高（任意 GUI） | 中（浏览器内） | 低（可脚本化环境） |
-| 精度/可靠性 | 最受 grounding 影响 | 高（DOM 元素级） | 最高（文本地址天然精确） |
-| 成本/速度 | 成本高、速度慢 | 成本低、速度快 | 成本低、反馈最干净 |
-| 典型场景 | 无 API、无 DOM 的封闭应用 | Web 业务自动化 | 编码、运维、可审计流程 |
-| 关键瓶颈 | 像素到坐标映射 | 依赖页面结构稳定性 | 工具链与执行权限治理 |
+| 感知层 | 纯截图，周期性帧（非视频流） | 结构化页面数据（DOM/CDP），截图可选 | 纯文本（终端输出、文件、执行结果） |
+| grounding 机制 | 像素 -> 坐标映射（核心瓶颈） | DOM 元素索引，无需空间坐标 | 无需空间定位（路径/行号即地址） |
+| 动作空间 | 通用虚拟鼠标+键盘（像素级 click/type/scroll） | 高层交互（open/click/type/fill） | shell + 文件编辑 + 工具调用 |
+| Agent Loop | 截图入上下文 -> 推理 -> 动作 -> 重观察 -> 重试 | NL 任务 -> 多步循环 -> 返回动作历史 | 写代码/命令 -> 执行 -> 读结果 -> 迭代 |
+| 通用性 vs 精度 | 通用性最强，精度最弱 | 仅浏览器，但精度高且稳定 | 仅可脚本化环境，精度最高 |
+| 安全 / 沙箱 | 虚拟机 / 远程桌面隔离 | 独立浏览器上下文 | Docker 沙箱（原生一等设计） |
 
-### 选型顺序（建议）
+---
 
-1. API/MCP 可用：直接走 API/MCP。
-2. 仅浏览器且结构稳定：DOM/CDP。
-3. 页面频繁改版：混合范式（视觉 + DOM）。
-4. 原生桌面且无障碍覆盖好：a11y。
-5. 无 API/无可用 a11y/高自绘：视觉兜底。
+## 03. GUI 视觉操控：grounding 是决定性难题
 
-## 报告整合摘要
+共性（Anthropic / OpenAI / UI-TARS）：
 
-### 核心框架
+- 都是“看截图 -> 决策 -> 鼠键动作”
+- 差异主要在如何把视觉感知映射到精确坐标
 
-- 怎么看：像素、DOM、a11y、API 数据。
-- 怎么动：鼠标键盘、选择器/CDP、控件 invoke、函数调用。
+主要路线：
 
-### 关键洞察
+- Anthropic：强调 counts pixels（像素计数）来移动光标
+- OpenAI CUA：监督学习负责感知与控制，强化学习负责推理恢复
+- UI-TARS：端到端统一动作空间，不依赖外部编排
 
-- 通用性与可靠性/成本成反比。
-- a11y 不是天然省 token：完整 AX 树如果不裁剪，可能比整页 HTML 更贵。
-- 同一任务在不同数据源（API 快照 vs 实时 DOM）下可能结果不同，这是“数据语义差异”，不是实现错误。
-- 终端/代码 harness 在可靠性和可控性上最强，因其不依赖空间 grounding。
+已知硬伤：
 
-### 学术与发布期快照（用于参考）
+- 截图是离散帧，会漏掉两帧间的瞬时变化
+- OSWorld（arXiv 2404.07972）显示主要瓶颈就是 GUI grounding
 
-- OSWorld：人类约 72.36%，发布期模型与人类有明显差距。
-- WebVoyager：59.1%（发布口径）。
-- WebArena：58.1%（二手口径）。
+---
 
-说明：上述数字是发布期快照；到 2026 视角，SOTA 持续上升，建议把“趋势”当结论、把“绝对数值”当历史快照。
+## 04. 浏览器自动化：绕开像素，利用结构化
 
-## 安装与运行（放在后面）
+这一路线的关键权衡是：快而脆 vs 抗变但贵。
 
-### 1) 环境要求
+### browser-use（DOM/CDP 路线）
 
-- Node.js 18+
-- Windows（`uia-a11y-demo.py` 依赖 Windows UI Automation）
-- Python 3（仅运行 `uia-a11y-demo.py` 时需要）
+- 直接走 CDP（Chrome DevTools Protocol）
+- 操作索引后的可交互元素，而不是点像素
+- 截图可选
+- 优点：快、低成本、定位准确
+- 代价：依赖 DOM 结构稳定
 
-### 2) 安装依赖
+### Skyvern（视觉优先路线）
 
-```bash
-npm install
-```
+- 以 Vision LLM 作为主感知
+- 不预设 XPath/selector
+- 借助多 agent 协作理解网页并规划执行
+- 优点：抗页面改版
+- 代价：更慢、更贵
 
-### 3) 运行基准
+---
 
-```bash
-node bench-core.mjs
-node bench-browser.mjs
-node bench-all.mjs
-```
+## 05. 终端 / 代码 harness：最成熟、最可靠
 
-运行 `bench-all.mjs` 后会更新 `bench-results.json`。
+这是最纯粹的“工具调用 + 执行反馈”闭环：
 
-### 4) 启动演示服务
+- 无需截图
+- 无需 DOM
+- 直接使用文本地址（路径、行号、命令）
 
-```bash
-node demo-server.mjs
-```
+代表：
 
-浏览器打开：`http://localhost:8848`。
+- OpenHands：代码/命令/网页操作 + Docker 沙箱，安全性强
+- Codex CLI：本地终端运行，轻量且直接
 
-### 5) 运行验证脚本（可选）
+为何最可靠：
 
-```bash
-node verify-demo.mjs
-node verify-code-modal.mjs
-node verify-report.mjs
-node verify-report-code.mjs
-node verify-a11y-section.mjs
-node verify-skyvern.mjs
-node verify-uia-report.mjs
-```
+- 不存在空间 grounding 误差
+- ground truth 来自真实执行结果，反馈信号强
 
-## 目录整理
+---
 
-```text
-research-cua/
-├─ bench-core.mjs               # 核心两路基准：API vs DOM
-├─ bench-browser.mjs            # 浏览器三路基准：Vision / a11y / CDP
-├─ bench-all.mjs                # 汇总五路并输出 bench-results.json
-├─ bench-results.json           # 基准结果样例/缓存数据
-├─ demo-server.mjs              # 本地演示服务（http://localhost:8848）
-├─ demo-live.html               # 演示页（由 demo-server 提供）
-│
-├─ agent-computer-control-report.html  # 深入报告（范式+实测）
-├─ agent-harness-report.html           # 总结报告（家族+架构）
-│
-├─ verify-demo.mjs              # 验证演示页的一键全跑、赢家高亮、截图
-├─ verify-code-modal.mjs        # 验证演示页“看代码”弹层
-├─ verify-report.mjs            # 验证报告页图表/表格渲染
-├─ verify-report-code.mjs       # 验证报告页“看代码”弹层
-├─ verify-a11y-section.mjs      # 验证报告页 a11y 章节与导航
-├─ verify-skyvern.mjs           # 验证报告页 Skyvern 弹层内容
-├─ verify-uia-report.mjs        # 验证报告页 UIA 卡片与弹层
-│
-├─ uia-a11y-demo.py             # Windows UIA 桌面无障碍树实测示例
-├─ package.json
-├─ package-lock.json
-└─ node_modules/                # 本地依赖（不建议提交）
-```
+## 06. 选型结论
 
-## GitHub Check-in 建议
+| 维度 | 最优家族 | 说明 |
+|---|---|---|
+| 通用性（任意软件） | ① GUI 视觉操控 | 唯一可覆盖无 API、无 DOM 的封闭 GUI |
+| 可靠性 / 精度 | ③ 终端 / 代码 | 文本地址精确，无 grounding 误差 |
+| Web 任务性价比 | ② 浏览器自动化 | 有 DOM 时显著优于像素路线 |
+| 安全隔离成熟度 | ③ 终端 / 代码 | Docker 沙箱是原生设计 |
+| 核心技术瓶颈 | ① GUI 视觉操控 | grounding 是主要失败源 |
 
-- `README.md` 已更新并可独立说明项目用途。
-- `bench-results.json` 是否为你希望保留的结果快照。
-- 验证截图为临时产物，默认不提交（已由 `.gitignore` 忽略）。
-- 不提交 `node_modules/`。
-- `.gitignore` 已配置（含 `node_modules/` 与验证截图）。
+---
 
-## 说明
+## 核查与局限
 
-- 多数 `verify-*.mjs` 使用 Playwright 做端到端检查与截图。
-- 个别验证脚本里写死了本地 HTML 绝对路径，跨机器运行前请先改为当前仓库路径。
+核查说明：
 
+- 7 组核心论断为 high confidence
+- 采用 3 票对抗式核查
+- 证据来自厂商一手资料 + arXiv 基准
+
+局限：
+
+- 厂商自述可能带宣传偏差
+- 领域迭代很快，部分框架在当前批次覆盖不完整
+
+---
+
+## 参考来源
+
+- Anthropic: Developing Computer Use
+- OpenAI: CUA / Operator System Card
+- UI-TARS: arXiv 2501.12326
+- OSWorld: arXiv 2404.07972
+- browser-use / Skyvern 官方仓库
+- OpenHands: arXiv 2407.16741
+- OpenAI Codex CLI 仓库
+- Anthropic: Building Effective Agents
