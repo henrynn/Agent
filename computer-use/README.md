@@ -28,7 +28,6 @@ research-cua/
 │
 ├─ uia-a11y-demo.py             # Windows UIA 桌面无障碍树实测示例
 │
-├─ demo-*.png / report-*.png    # 验证脚本运行后按需生成（默认不入库）
 │
 ├─ package.json
 ├─ package-lock.json
@@ -78,6 +77,34 @@ node verify-a11y-section.mjs
 node verify-skyvern.mjs
 node verify-uia-report.mjs
 ```
+
+## 报告核心对比数据与结论
+
+以下内容摘自 `agent-computer-control-report.html` 与 `agent-harness-report.html`，并与 `bench-results.json` 保持一致，方便不打开 HTML 也能快速查看。
+
+### 同任务五路实测（HN Top10 提取）
+
+| 路径 | 感知形态 | 延迟 (ms) | LLM tokens | Payload (B) | 关键观察 |
+|---|---|---:|---:|---:|---|
+| API/MCP | 结构化 JSON | 1056 | 294 | 11172 | 最稳、最易维护，字段缺失 0% |
+| DOM 正则 | 原始 HTML | 815 | 8689（裁剪后 291） | 34754 | 速度快，但对页面结构更脆弱 |
+| CDP 页内提取 | DOM evaluate | 1220 | 288 | 1153 | token 与 payload 最低，综合性价比最佳 |
+| a11y AX 树 | 语义控件树 | 1429 | 13812 | 55249 | 不裁剪时 token 反而最高（AX 全树噪声大） |
+| 视觉截图 | PNG 像素 | 3043 | 1536 | 123661 | 通用性最高，但最慢、载荷最重 |
+
+### 关键结论（工程选型）
+
+- 能用 API/MCP 就不要点 UI：通常最快、最稳、最便宜。
+- 浏览器场景优先 CDP/DOM：实测中 CDP 路径 token 最低（288），且字段完整。
+- a11y 不是天然省 token：完整 AX 树若不裁剪，会比整页 HTML 更贵。
+- 视觉范式是“通用兜底”而非默认首选：可覆盖任意 GUI，但延迟和 payload 成本最高。
+- 终端/代码 harness 在可靠性与可控性上最强：以文本地址和执行结果闭环，避免像素级 grounding 误差。
+
+### 基准结论（报告快照）
+
+- OSWorld 发布期对比：人类约 72.36%，模型与人类仍有明显差距。
+- 报告强调的核心瓶颈是 GUI grounding（定位与对齐），这是纯视觉路径的主要失败来源。
+- 因此推荐策略是“分层降级”：API/MCP -> DOM/CDP -> a11y -> 视觉兜底。
 
 ## GitHub Check-in 建议
 
