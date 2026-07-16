@@ -1,0 +1,495 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>五路实时对决 · AI Agent 操作电脑的四种范式</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --page:#f9f9f7; --surface:#fcfcfb; --surface-2:#f4f4f1;
+    --ink:#0b0b0b; --ink-2:#52514e; --muted:#898781;
+    --grid:#e1e0d9; --baseline:#c3c2b7; --border:rgba(11,11,11,0.10); --border-2:rgba(11,11,11,0.06);
+    --c-vision:#eb6834; --c-dom:#4a3aa7; --c-a11y:#eda100; --c-api:#1baf7a; --c-cdp:#2a78d6;
+    --good:#0ca30c; --warn:#eda100; --serious:#ec835a; --critical:#d03b3b;
+    --shadow:0 1px 2px rgba(11,11,11,.04), 0 8px 24px rgba(11,11,11,.05);
+    --radius:14px; --sans:system-ui,-apple-system,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+    --mono:ui-monospace,"SF Mono","Cascadia Code",Consolas,monospace;
+  }
+  @media (prefers-color-scheme: dark){:root{
+    --page:#0d0d0d; --surface:#1a1a19; --surface-2:#232322;
+    --ink:#fff; --ink-2:#c3c2b7; --muted:#898781;
+    --grid:#2c2c2a; --baseline:#383835; --border:rgba(255,255,255,0.10); --border-2:rgba(255,255,255,0.06);
+    --c-vision:#d95926; --c-dom:#9085e9; --c-a11y:#c98500; --c-api:#199e70; --c-cdp:#3987e5;
+    --good:#0ca30c; --shadow:0 1px 2px rgba(0,0,0,.3),0 10px 30px rgba(0,0,0,.4);
+  }}
+  *{box-sizing:border-box;}
+  body{margin:0;background:var(--page);color:var(--ink);font-family:var(--sans);line-height:1.55;-webkit-font-smoothing:antialiased;}
+  .wrap{max-width:1100px;margin:0 auto;padding:0 24px;}
+  header{padding:44px 0 26px;border-bottom:1px solid var(--border);
+    background:radial-gradient(1000px 300px at 12% -20%,color-mix(in srgb,var(--c-cdp) 10%,transparent),transparent),
+               radial-gradient(900px 280px at 100% 0%,color-mix(in srgb,var(--c-api) 8%,transparent),transparent);}
+  .kicker{font-size:13px;letter-spacing:.14em;text-transform:uppercase;color:var(--c-cdp);font-weight:650;margin-bottom:12px;}
+  h1{font-size:clamp(26px,4.2vw,38px);line-height:1.12;margin:0 0 12px;letter-spacing:-.02em;font-weight:780;}
+  .lede{font-size:clamp(15px,2.2vw,18px);color:var(--ink-2);max-width:720px;margin:0;}
+  .task-bar{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:center;margin-top:18px;font-size:13.5px;color:var(--muted);}
+  .task-bar b{color:var(--ink-2);font-weight:600;}
+  code{font-family:var(--mono);font-size:.88em;background:var(--surface-2);padding:1.5px 6px;border-radius:5px;border:1px solid var(--border-2);}
+
+  /* controls */
+  .controls{position:sticky;top:0;z-index:20;background:color-mix(in srgb,var(--page) 92%,transparent);
+    backdrop-filter:blur(10px);border-bottom:1px solid var(--border-2);padding:14px 0;margin-bottom:8px;}
+  .controls .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center;}
+  .btn{border:1px solid var(--border);border-radius:10px;padding:10px 18px;background:var(--surface);color:var(--ink);
+    font-size:14.5px;font-weight:640;cursor:pointer;font-family:inherit;transition:transform .1s,border-color .15s,background .15s;
+    display:inline-flex;align-items:center;gap:8px;}
+  .btn:hover{transform:translateY(-1px);border-color:var(--c-cdp);}
+  .btn:active{transform:translateY(0);}
+  .btn:disabled{opacity:.5;cursor:not-allowed;transform:none;}
+  .btn.primary{background:var(--c-cdp);color:#fff;border-color:var(--c-cdp);font-size:15.5px;padding:11px 22px;}
+  .btn.primary:hover{filter:brightness(1.06);}
+  .btn.ghost{padding:10px 14px;font-weight:500;color:var(--ink-2);}
+  .target{margin-left:auto;font-size:13px;color:var(--muted);display:flex;align-items:center;gap:7px;}
+  .target b{color:var(--ink-2);font-weight:600;font-family:var(--mono);}
+  .dot{width:8px;height:8px;border-radius:50%;background:var(--good);}
+
+  main{padding:8px 0 60px;}
+
+  /* leaderboard hint */
+  .axis{display:grid;grid-template-columns:150px 1fr;gap:14px;font-size:11.5px;color:var(--muted);margin:14px 0 6px;padding:0 4px;}
+  .axis .sc{display:flex;justify-content:space-between;}
+
+  /* lane */
+  .lanes{display:flex;flex-direction:column;gap:12px;}
+  .lane{border:1px solid var(--border);border-radius:var(--radius);background:var(--surface);box-shadow:var(--shadow);
+    overflow:hidden;transition:border-color .2s,box-shadow .2s;position:relative;}
+  .lane::before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--bar);}
+  .lane.winner{border-color:var(--good);box-shadow:0 0 0 1px var(--good),var(--shadow);}
+  .lane .head{display:grid;grid-template-columns:150px 1fr;gap:14px;align-items:center;padding:14px 16px 14px 20px;}
+  .lane .id{display:flex;align-items:center;gap:9px;}
+  .lane .tag{width:11px;height:11px;border-radius:3px;background:var(--bar);flex:none;}
+  .lane .name{font-weight:680;font-size:15px;}
+  .lane .perc{font-size:11.5px;color:var(--muted);margin-top:1px;}
+  .lane .track-wrap{display:flex;align-items:center;gap:14px;}
+  .track{position:relative;height:26px;background:var(--surface-2);border-radius:7px;overflow:hidden;flex:1;min-width:80px;}
+  .fill{position:absolute;left:0;top:0;bottom:0;border-radius:7px 5px 5px 7px;background:var(--bar);width:0;
+    transition:width .8s cubic-bezier(.35,0,.15,1);display:flex;align-items:center;justify-content:flex-end;padding-right:9px;}
+  .fill .ms{color:#fff;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;text-shadow:0 1px 2px rgba(0,0,0,.25);opacity:0;transition:opacity .3s;white-space:nowrap;}
+  .fill.show .ms{opacity:1;}
+  .lane .status{min-width:96px;text-align:right;font-size:12.5px;color:var(--muted);font-variant-numeric:tabular-nums;}
+  .lane .status.done{color:var(--good);font-weight:640;}
+  .lane .status.cache{color:var(--warn);font-weight:640;}
+  .lane .status.err{color:var(--critical);font-weight:640;}
+  .spinner{display:inline-block;width:12px;height:12px;border:2px solid var(--border);border-top-color:var(--bar);border-radius:50%;animation:spin .7s linear infinite;vertical-align:-1px;}
+  @keyframes spin{to{transform:rotate(360deg);}}
+
+  /* metrics strip */
+  .metrics{display:grid;grid-template-columns:150px 1fr;gap:14px;padding:0 16px 0 20px;max-height:0;overflow:hidden;transition:max-height .4s,padding .4s;}
+  .metrics.open{max-height:600px;padding-bottom:14px;}
+  .mgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;}
+  .m{border:1px solid var(--border-2);border-radius:10px;padding:9px 12px;background:var(--surface-2);}
+  .m .v{font-size:20px;font-weight:760;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1.1;}
+  .m .v small{font-size:12px;font-weight:400;color:var(--muted);}
+  .m .l{font-size:11px;color:var(--muted);margin-top:2px;}
+  .m.hero .v{color:var(--bar);}
+  .m.warn-v .v{color:var(--critical);}
+  .cache-note{grid-column:1/-1;font-size:12px;color:var(--warn);display:flex;align-items:center;gap:6px;margin-top:2px;}
+
+  /* vision screenshot — the climax */
+  .shot{grid-column:1/-1;margin-top:4px;border:1px solid var(--border);border-radius:10px;overflow:hidden;position:relative;background:var(--surface-2);}
+  .shot img{display:block;width:100%;height:auto;}
+  .shot .badge{position:absolute;top:8px;left:8px;background:rgba(0,0,0,.72);color:#fff;font-size:11px;padding:3px 9px;border-radius:6px;display:flex;align-items:center;gap:5px;backdrop-filter:blur(4px);}
+  .shot .badge .d{width:7px;height:7px;border-radius:50%;background:var(--c-vision);}
+
+  /* sample data */
+  .sample{grid-column:1/-1;margin-top:4px;font-size:12.5px;color:var(--ink-2);}
+  .sample ol{margin:4px 0 0;padding-left:22px;}
+  .sample li{margin:2px 0;}
+  .sample .pts{color:var(--c-api);font-weight:700;font-variant-numeric:tabular-nums;}
+
+  /* insight callout */
+  .insight{margin:26px 0 0;border:1px solid var(--border);border-left:4px solid var(--warn);background:var(--surface);
+    border-radius:12px;padding:16px 18px;box-shadow:var(--shadow);max-height:0;overflow:hidden;opacity:0;
+    transition:max-height .5s,opacity .5s,padding .5s;padding-top:0;padding-bottom:0;}
+  .insight.show{max-height:400px;opacity:1;padding-top:16px;padding-bottom:16px;}
+  .insight .h{font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px;font-size:15px;}
+  .insight p{margin:5px 0;font-size:14px;color:var(--ink-2);}
+  .insight b{color:var(--ink);}
+
+  footer{border-top:1px solid var(--border-2);padding:22px 0 40px;font-size:13px;color:var(--muted);}
+  footer a{color:var(--c-cdp);text-decoration:none;}
+  .legend{display:flex;flex-wrap:wrap;gap:14px;font-size:12.5px;color:var(--ink-2);margin-top:6px;}
+  .legend .it{display:inline-flex;align-items:center;gap:6px;}
+  .legend .sw{width:11px;height:11px;border-radius:3px;}
+  @media (max-width:720px){
+    .lane .head,.metrics{grid-template-columns:1fr;}
+    .lane .id{margin-bottom:2px;}
+    .axis{grid-template-columns:1fr;}
+  }
+
+  /* 看代码按钮 */
+  .code-btn{border:1px solid var(--border);border-radius:8px;padding:4px 10px;background:var(--surface-2);color:var(--ink-2);
+    font-size:12px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:border-color .15s,color .15s;flex:none;}
+  .code-btn:hover{border-color:var(--bar);color:var(--ink);}
+
+  /* 代码弹层 */
+  .modal-bd{position:fixed;inset:0;z-index:100;background:rgba(11,11,11,.55);backdrop-filter:blur(3px);
+    display:none;align-items:center;justify-content:center;padding:24px;}
+  .modal-bd.show{display:flex;}
+  .modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
+    max-width:820px;width:100%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;border-top:4px solid var(--bar);}
+  .modal .mhead{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border-2);}
+  .modal .mhead .sw{width:12px;height:12px;border-radius:3px;background:var(--bar);flex:none;}
+  .modal .mhead .t{font-weight:700;font-size:15.5px;}
+  .modal .mhead .sub{font-size:12.5px;color:var(--muted);margin-left:2px;}
+  .modal .mhead .x{margin-left:auto;border:none;background:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:0 4px;}
+  .modal .mhead .x:hover{color:var(--ink);}
+  .modal .note{padding:12px 20px 0;font-size:13px;color:var(--ink-2);}
+  .modal .note b{color:var(--bar);}
+  .modal pre{margin:12px 20px 20px;padding:16px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:10px;
+    overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--ink);}
+  .modal .tag-k{color:var(--c-cdp);font-weight:600;}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="wrap">
+    <div class="kicker">现场实时演示 · 眼见为实</div>
+    <h1>五路实时对决：AI Agent 操作电脑的四种范式</h1>
+    <p class="lede">别人给你看 PPT 上的数字，我们现在<b>当场真跑给你看</b>。同一个任务，五条技术路径同场竞速，延迟 / token / 网络流量实时呈现——包括像素视觉那条当场生成的真实截图。</p>
+    <div class="task-bar">
+      <span>统一任务 <b>从 Hacker News 首页提取前 10 条 {标题·分数·作者·评论数}</b></span>
+      <span>靶场 <b>news.ycombinator.com</b></span>
+    </div>
+  </div>
+</header>
+
+<div class="controls">
+  <div class="wrap">
+    <div class="row">
+      <button class="btn primary" id="run-all">▶ 一键全跑（五路齐发）</button>
+      <button class="btn ghost" id="reset">↺ 重置</button>
+      <span class="target"><span class="dot" id="conn-dot"></span><span id="conn-label">连接中…</span></span>
+    </div>
+  </div>
+</div>
+
+<main class="wrap">
+  <div class="axis">
+    <span></span>
+    <div class="sc"><span>← 延迟条越短越快</span><span>点单条名称可单独重跑 ↺</span></div>
+  </div>
+  <div class="lanes" id="lanes"></div>
+
+  <div class="insight" id="insight">
+    <div class="h">⚡ 现场就能看出的三个反直觉真相</div>
+    <p><b>1. DOM/CDP 页内提取是隐藏赢家</b>——token 最低、流量最小，因为它在浏览器里跑 DOM API，只把 10 条精炼结果传出来。</p>
+    <p><b>2. 无障碍树 a11y 反而最费 token</b>——完整语义树很嘈杂，不裁剪比整页 HTML 还贵，破除"a11y 一定省"的直觉。</p>
+    <p><b>3. 像素视觉那条流量最重（右上真截图）</b>——一张 PNG 就上百 KB、延迟 3×，但它是唯一"没有 API 和 DOM 也能干"的通用路子。</p>
+  </div>
+
+  <div class="legend" style="margin-top:20px">
+    <span class="it"><span class="sw" style="background:var(--c-vision)"></span>① 像素视觉</span>
+    <span class="it"><span class="sw" style="background:var(--c-cdp)"></span>②b DOM/CDP 精确</span>
+    <span class="it"><span class="sw" style="background:var(--c-dom)"></span>② DOM 正则</span>
+    <span class="it"><span class="sw" style="background:var(--c-a11y)"></span>③ 无障碍树</span>
+    <span class="it"><span class="sw" style="background:var(--c-api)"></span>④ API/MCP</span>
+  </div>
+</main>
+
+<!-- 代码弹层 -->
+<div class="modal-bd" id="modal-bd">
+  <div class="modal" id="modal" style="--bar:var(--c-cdp)">
+    <div class="mhead">
+      <span class="sw"></span>
+      <span class="t" id="modal-title">实现代码</span>
+      <span class="sub" id="modal-sub"></span>
+      <button class="x" id="modal-x" title="关闭">×</button>
+    </div>
+    <div class="note" id="modal-note"></div>
+    <pre id="modal-code"></pre>
+  </div>
+</div>
+
+<footer class="wrap">
+  实时数据来自本机真跑（Node + Playwright 驱动真实浏览器访问 HN）。网络不通时自动回退到已录制的真实实测数据并标注 <span style="color:var(--warn)">⚡缓存</span>——数字始终真实。完整技术分析见 <a href="agent-computer-control-report.html">调研报告 →</a>
+</footer>
+
+<script>
+const LANES = [
+  { key:'vision', name:'① 像素视觉截图',    perc:'看截图 · 发鼠键坐标',  color:'var(--c-vision)' },
+  { key:'a11y',   name:'③ 无障碍树 a11y',   perc:'读语义控件树 (AX)',    color:'var(--c-a11y)'   },
+  { key:'dom',    name:'② DOM 正则解析',    perc:'抓整页 HTML 抠字段',   color:'var(--c-dom)'    },
+  { key:'api',    name:'④ API/MCP 直连',    perc:'请求结构化 JSON',      color:'var(--c-api)'    },
+  { key:'cdp',    name:'②b DOM/CDP 精确提取',perc:'浏览器内跑 DOM API',   color:'var(--c-cdp)'    },
+];
+const MAX_MS = 3600; // 延迟条满格基准（视觉约 3s）
+
+// 每条范式的真实实现代码片段（取自 demo-server.mjs），点"看代码"弹出
+const CODE = {
+  api: {
+    sub: 'runAPI() · 后端 fetch 公开 API',
+    note: '最省心的一条：HN 有公开 <b>Algolia API</b>，直接请求就拿到结构化 JSON，无需渲染、无需解析。现实里前提是"目标恰好有 API"。',
+    code:
+`async function runAPI() {
+  // 直接请求 HN 官方 Algolia API —— 拿回就是干净 JSON
+  const url = 'https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=10';
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const text = await res.text();
+
+  // 字段已结构化，一步 map 到位，零解析
+  const items = JSON.parse(text).hits.map(h => ({
+    title: h.title, points: h.points,
+    author: h.author, comments: h.num_comments,
+  }));
+  return { llmTokens: toks(JSON.stringify(items)), parseSteps: 1, ... };
+}`
+  },
+  dom: {
+    sub: 'runDOM() · 后端抓整页 HTML + 正则',
+    note: '<b>没有浏览器</b>，纯 HTTP 抓回整页 HTML 字符串，只能靠切割 + 正则"猜"结构。轻快但脆——HN 一改 class 名正则就废；且整页 HTML 喂 LLM 会 token 爆炸（8689 vs 精炼 291）。',
+    code:
+`async function runDOM() {
+  // 纯 fetch，拿回的是一大坨整页 HTML 文本
+  const res = await fetch('https://news.ycombinator.com/', ...);
+  const html = await res.text();
+
+  // 没有 DOM 树 —— 只能字符串切割 + 正则去抠字段
+  const rows = html.split('class="athing').slice(1, 11);
+  const rest = html.split('class="subtext"');
+  for (let i = 0; i < 10; i++) {
+    const b = rows[i], sub = rest[i + 1] || '';
+    items.push({
+      title:  (b.match(/class="titleline"><a[^>]*>([^<]+)<\\/a>/) || [])[1],
+      points: +((sub.match(/class="score"[^>]*>(\\d+)/)  || [])[1]),
+      author: (sub.match(/class="hnuser">([^<]+)</)      || [])[1],
+    });
+  }
+  // 整页 HTML 的 token（若直接喂 LLM）＝ 8689，精炼后只需 291
+  return { llmTokens: toks(html), llmTokensTrimmed: toks(JSON.stringify(items)) };
+}`
+  },
+  cdp: {
+    sub: 'runCDP() · 开真 Chromium，页内跑 DOM API',
+    note: '<b>CDP = Chrome DevTools Protocol（Chrome 开发者工具协议）</b>，驱动真浏览器的底层通道，Playwright/Puppeteer 都走它。分水岭是 <span class="tag-k">page.evaluate</span>：把提取代码送进页面内部用真 DOM API 跑，只回传 10 条干净结果 —— 稳、且 token 最低（288）。',
+    code:
+`async function runCDP() {
+  const browser = await getBrowser();          // 真 Chromium（Playwright 经 CDP 驱动）
+  const page = await browser.newPage();
+  await page.goto('https://news.ycombinator.com/');  // 内核真解析 HTML，建出完整 DOM 树
+
+  // ★关键★ page.evaluate 把这段 JS 经 CDP 送进「页面内部」执行
+  const items = await page.evaluate((n) => {
+    const rows = document.querySelectorAll('tr.athing');   // 真 DOM 查询，不是正则
+    const o = [];
+    for (let i = 0; i < Math.min(n, rows.length); i++) {
+      const r = rows[i], s = r.nextElementSibling;         // 按 DOM 结构导航，稳
+      o.push({
+        title:  r.querySelector('.titleline > a')?.textContent,
+        points: parseInt(s?.querySelector('.score')?.textContent) || null,
+        author: s?.querySelector('.hnuser')?.textContent,
+      });
+    }
+    return o;   // 只把 10 条精炼结果传回 Node（跨进程仅 1.2KB，而非 35KB 整页）
+  }, 10);
+  return { llmTokens: toks(JSON.stringify(items)), parseSteps: 2, ... };
+}`
+  },
+  a11y: {
+    sub: 'runA11y() · 裸调 CDP 命令拉无障碍树',
+    note: '这条是<b>不经封装、直接说 CDP 协议</b>：<span class="tag-k">Accessibility.getFullAXTree</span> 是 CDP 原生命令，Playwright 普通 API 不暴露，只能降到 CDP 层拿。反直觉——完整 AX 树很嘈杂，不裁剪比整页 HTML 还费 token（13812）。',
+    code:
+`async function runA11y() {
+  const page = await browser.newPage();
+  await page.goto('https://news.ycombinator.com/');
+
+  // 拿到「裸 CDP 会话」，直接发 CDP 原生命令（Playwright 普通 API 没有这个）
+  const client = await page.context().newCDPSession(page);
+  await client.send('Accessibility.enable');
+  const { nodes } = await client.send('Accessibility.getFullAXTree');   // 拉整棵无障碍树
+
+  const slim = nodes
+    .map(n => ({ role: n.role?.value, name: n.name?.value }))
+    .filter(n => n.name);
+  // 完整语义树很啰嗦 —— axNodes=1624，token 反而最高
+  return { llmTokens: toks(JSON.stringify(slim)), axNodes: nodes.length };
+}`
+  },
+  vision: {
+    sub: 'runVision() · 真截图 + 视觉 token 估算',
+    note: '唯一"没有 API、没有 DOM 也能干"的通用路子：<span class="tag-k">page.screenshot()</span> 生成真 PNG（右侧展示图是真的）。视觉 token 按 Anthropic 口径 <span class="tag-k">(宽×高)/750</span> 估算 ≈ 1536。代价：延迟 3×、流量 124KB（107×）。',
+    code:
+`async function runVision() {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.goto('https://news.ycombinator.com/');
+
+  // 真截图 —— 生成真实 PNG 字节（现场展示的那张图就是它）
+  const buf = await page.screenshot();
+  const vp = page.viewportSize();
+
+  // 视觉 token 按 Anthropic 估算式：(宽 × 高) / 750
+  const imgToks = (w, h) => Math.round((w * h) / 750);   // 1280×900 ≈ 1536
+
+  return {
+    wirePayload: buf.length,                 // 真实 PNG 字节数 ≈ 124KB
+    llmTokens: imgToks(vp.width, vp.height),  // ≈ 1536 视觉 token
+    screenshot: 'data:image/png;base64,' + buf.toString('base64'),
+  };
+}`
+  },
+};
+
+const lanesEl = document.getElementById('lanes');
+const state = {}; // key -> result
+
+function laneHTML(l){
+  return `<div class="lane" id="lane-${l.key}" style="--bar:${l.color}">
+    <div class="head">
+      <div class="id"><span class="tag"></span><div><div class="name">${l.name}</div><div class="perc">${l.perc}</div></div></div>
+      <div class="track-wrap">
+        <div class="track"><div class="fill" id="fill-${l.key}"><span class="ms" id="ms-${l.key}"></span></div></div>
+        <div class="status" id="st-${l.key}">待命</div>
+        <button class="code-btn" data-code="${l.key}">👁 看代码</button>
+      </div>
+    </div>
+    <div class="metrics" id="met-${l.key}"></div>
+  </div>`;
+}
+lanesEl.innerHTML = LANES.map(laneHTML).join('');
+// 点名称可单跑
+LANES.forEach(l=>{
+  document.querySelector(`#lane-${l.key} .id`).style.cursor='pointer';
+  document.querySelector(`#lane-${l.key} .id`).title='点击单独重跑这条';
+  document.querySelector(`#lane-${l.key} .id`).onclick=()=>runLane(l.key);
+});
+
+// 看代码弹层
+const modalBd=document.getElementById('modal-bd');
+function openCode(key){
+  const l=LANES.find(x=>x.key===key), c=CODE[key];
+  if(!c) return;
+  document.getElementById('modal').style.setProperty('--bar', l.color);
+  document.getElementById('modal-title').textContent=l.name;
+  document.getElementById('modal-sub').textContent=c.sub;
+  document.getElementById('modal-note').innerHTML=c.note;
+  document.getElementById('modal-code').textContent=c.code;
+  modalBd.classList.add('show');
+}
+function closeCode(){ modalBd.classList.remove('show'); }
+document.querySelectorAll('.code-btn').forEach(b=>b.onclick=()=>openCode(b.dataset.code));
+document.getElementById('modal-x').onclick=closeCode;
+modalBd.onclick=(e)=>{ if(e.target===modalBd) closeCode(); };
+document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closeCode(); });
+
+const fmtKB=(v)=> v>=1024 ? (v/1024).toFixed(1)+' KB' : v+' B';
+const fmtInt=(v)=> v.toLocaleString();
+
+function setRunning(key){
+  const st=document.getElementById('st-'+key);
+  st.className='status'; st.innerHTML='<span class="spinner"></span> 运行中';
+  const fill=document.getElementById('fill-'+key);
+  fill.classList.remove('show'); fill.style.width='0';
+  document.getElementById('met-'+key).classList.remove('open');
+  document.getElementById('lane-'+key).classList.remove('winner');
+}
+
+function renderLane(key,r){
+  state[key]=r;
+  const lane=document.getElementById('lane-'+key);
+  const st=document.getElementById('st-'+key);
+  const fill=document.getElementById('fill-'+key);
+  const ms=document.getElementById('ms-'+key);
+  const met=document.getElementById('met-'+key);
+
+  // 延迟条
+  const pct=Math.max(4,Math.min(100,(r.ms/MAX_MS)*100));
+  requestAnimationFrame(()=>{ fill.style.width=pct+'%'; setTimeout(()=>fill.classList.add('show'),400); });
+  ms.textContent=r.ms+'ms';
+
+  // 状态
+  if(r.error){ st.className='status err'; st.textContent='✗ 失败'; return; }
+  if(r.fromCache){ st.className='status cache'; st.textContent='⚡ 缓存'; }
+  else { st.className='status done'; st.textContent='✓ 完成'; }
+
+  // 指标卡
+  const cards=[];
+  cards.push(`<div class="m hero"><div class="v">${fmtInt(r.llmTokens)}</div><div class="l">送 LLM 的 token</div></div>`);
+  cards.push(`<div class="m"><div class="v">${fmtKB(r.wirePayload)}</div><div class="l">网络流量</div></div>`);
+  if(r.parseSteps!=null) cards.push(`<div class="m"><div class="v">${r.parseSteps}</div><div class="l">解析步数</div></div>`);
+  if(r.fieldMissRate!=null){
+    const miss=r.fieldMissRate===0?'<span style="color:var(--good)">0%</span>':(r.fieldMissRate*100)+'%';
+    cards.push(`<div class="m"><div class="v">${miss}</div><div class="l">字段缺失</div></div>`);
+  }
+  if(r.axNodes) cards.push(`<div class="m warn-v"><div class="v">${fmtInt(r.axNodes)}</div><div class="l">AX 树节点</div></div>`);
+
+  let inner=`<div class="mgrid">${cards.join('')}</div>`;
+  if(r.cacheNote) inner+=`<div class="cache-note">⚡ ${r.cacheNote}</div>`;
+  // 视觉截图 —— 现场高潮
+  if(r.screenshot) inner+=`<div class="shot"><span class="badge"><span class="d"></span>当场生成 · ${r.viewport} · ${fmtKB(r.screenshotBytes)} PNG</span><img src="${r.screenshot}" alt="HN 首页真实截图"></div>`;
+  // 样本
+  if(r.sample&&r.sample.length){
+    const li=r.sample.map(s=>`<li>${(s.title||'—').slice(0,54)}${s.title&&s.title.length>54?'…':''} <span class="pts">${s.points??'?'}↑</span> @${s.author??'?'}</li>`).join('');
+    inner+=`<div class="sample">实际抽到：<ol>${li}</ol></div>`;
+  }
+  met.innerHTML=inner;
+  met.classList.add('open');
+}
+
+async function runLane(key){
+  setRunning(key);
+  try{
+    const res=await fetch('/run?p='+key);
+    const r=await res.json();
+    renderLane(key,r);
+  }catch(e){
+    const st=document.getElementById('st-'+key);
+    st.className='status err'; st.textContent='✗ 无法连接';
+  }
+  updateWinner();
+}
+
+function updateWinner(){
+  // 全跑完后高亮 token 最低者（现场结论）
+  const done=Object.entries(state).filter(([k,r])=>r&&!r.error&&r.llmTokens!=null);
+  if(done.length<LANES.length) return;
+  document.querySelectorAll('.lane').forEach(l=>l.classList.remove('winner'));
+  const win=done.reduce((a,b)=>b[1].llmTokens<a[1].llmTokens?b:a);
+  document.getElementById('lane-'+win[0]).classList.add('winner');
+  document.getElementById('st-'+win[0]).innerHTML+=' <b>· 赢家</b>';
+  document.getElementById('insight').classList.add('show');
+}
+
+// 一键全跑：依次触发（有节奏感，视觉那条压轴）
+document.getElementById('run-all').onclick=async()=>{
+  const btn=document.getElementById('run-all'); btn.disabled=true;
+  Object.keys(state).forEach(k=>delete state[k]);
+  document.getElementById('insight').classList.remove('show');
+  // 顺序：先快后慢，视觉压轴出场
+  const order=['api','cdp','dom','a11y','vision'];
+  for(const k of order){ await runLane(k); await new Promise(r=>setTimeout(r,320)); }
+  btn.disabled=false;
+};
+
+document.getElementById('reset').onclick=()=>{
+  Object.keys(state).forEach(k=>delete state[k]);
+  document.getElementById('insight').classList.remove('show');
+  LANES.forEach(l=>{
+    document.getElementById('st-'+l.key).className='status';
+    document.getElementById('st-'+l.key).textContent='待命';
+    const f=document.getElementById('fill-'+l.key); f.style.width='0'; f.classList.remove('show');
+    document.getElementById('met-'+l.key).classList.remove('open');
+    document.getElementById('lane-'+l.key).classList.remove('winner');
+  });
+};
+
+// 连接状态
+fetch('/health').then(r=>r.json()).then(()=>{
+  document.getElementById('conn-label').textContent='服务已就绪';
+}).catch(()=>{
+  document.getElementById('conn-dot').style.background='var(--critical)';
+  document.getElementById('conn-label').textContent='未连接后端（请先启动 demo-server.mjs）';
+});
+</script>
+</body>
+</html>

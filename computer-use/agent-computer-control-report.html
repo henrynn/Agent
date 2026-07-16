@@ -1,0 +1,1076 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI Agent 操作计算机的技术范式 · 深度调研与实测对决</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    /* surfaces & ink */
+    --page:        #f9f9f7;
+    --surface:     #fcfcfb;
+    --surface-2:   #f4f4f1;
+    --ink:         #0b0b0b;
+    --ink-2:       #52514e;
+    --muted:       #898781;
+    --grid:        #e1e0d9;
+    --baseline:    #c3c2b7;
+    --border:      rgba(11,11,11,0.10);
+    --border-2:    rgba(11,11,11,0.06);
+    /* categorical slots (validated CVD-safe) */
+    --c-vision:    #eb6834;  /* orange  — 像素视觉 */
+    --c-dom:       #4a3aa7;  /* violet  — DOM 系 */
+    --c-a11y:      #eda100;  /* yellow  — 无障碍树 */
+    --c-api:       #1baf7a;  /* aqua    — API/MCP */
+    --c-cdp:       #2a78d6;  /* blue    — CDP 精确 */
+    --c-hybrid:    #e34948;  /* red     — 混合 */
+    --good:        #0ca30c;
+    --warn:        #eda100;
+    --serious:     #ec835a;
+    --critical:    #d03b3b;
+    --shadow:      0 1px 2px rgba(11,11,11,.04), 0 8px 24px rgba(11,11,11,.05);
+    --radius:      14px;
+    --maxw:        1080px;
+    --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    --mono: ui-monospace, "SF Mono", "Cascadia Code", Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --page:      #0d0d0d;
+      --surface:   #1a1a19;
+      --surface-2: #232322;
+      --ink:       #ffffff;
+      --ink-2:     #c3c2b7;
+      --muted:     #898781;
+      --grid:      #2c2c2a;
+      --baseline:  #383835;
+      --border:    rgba(255,255,255,0.10);
+      --border-2:  rgba(255,255,255,0.06);
+      --c-vision:  #d95926;
+      --c-dom:     #9085e9;
+      --c-a11y:    #c98500;
+      --c-api:     #199e70;
+      --c-cdp:     #3987e5;
+      --c-hybrid:  #e66767;
+      --good:      #0ca30c;
+      --shadow:    0 1px 2px rgba(0,0,0,.3), 0 10px 30px rgba(0,0,0,.4);
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0; background: var(--page); color: var(--ink);
+    font-family: var(--sans); line-height: 1.65;
+    -webkit-font-smoothing: antialiased; font-size: 16px;
+  }
+  .wrap { max-width: var(--maxw); margin: 0 auto; padding: 0 24px; }
+
+  /* ---------- hero ---------- */
+  header.hero {
+    padding: 72px 0 40px; border-bottom: 1px solid var(--border);
+    background:
+      radial-gradient(1200px 400px at 15% -10%, color-mix(in srgb, var(--c-cdp) 9%, transparent), transparent),
+      radial-gradient(1000px 360px at 100% 0%, color-mix(in srgb, var(--c-api) 8%, transparent), transparent);
+  }
+  .kicker {
+    font-size: 13px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--c-cdp); font-weight: 650; margin-bottom: 14px;
+  }
+  h1 { font-size: clamp(30px, 5vw, 46px); line-height: 1.12; margin: 0 0 18px; letter-spacing: -.02em; font-weight: 780; }
+  .lede { font-size: clamp(17px,2.4vw,20px); color: var(--ink-2); max-width: 760px; margin: 0 0 26px; }
+  .meta-row { display: flex; flex-wrap: wrap; gap: 10px 20px; font-size: 13.5px; color: var(--muted); align-items: center; }
+  .meta-row b { color: var(--ink-2); font-weight: 600; }
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 11px; border: 1px solid var(--border); border-radius: 999px; background: var(--surface); font-size: 12.5px; }
+  .pill .dot { width: 8px; height: 8px; border-radius: 50%; }
+
+  /* ---------- section scaffolding ---------- */
+  section { padding: 52px 0; border-bottom: 1px solid var(--border-2); }
+  h2 { font-size: clamp(23px,3.4vw,30px); margin: 0 0 6px; letter-spacing: -.015em; font-weight: 740; scroll-margin-top: 20px; }
+  h2 .num { color: var(--c-cdp); font-variant-numeric: tabular-nums; margin-right: 12px; font-weight: 800; }
+  .sec-sub { color: var(--muted); font-size: 15px; margin: 0 0 30px; }
+  h3 { font-size: 19px; margin: 34px 0 12px; letter-spacing: -.01em; font-weight: 680; }
+  p { margin: 0 0 14px; }
+  a { color: var(--c-cdp); text-decoration: none; border-bottom: 1px solid transparent; transition: border-color .15s; }
+  a:hover { border-bottom-color: currentColor; }
+  code { font-family: var(--mono); font-size: .87em; background: var(--surface-2); padding: 1.5px 6px; border-radius: 5px; border: 1px solid var(--border-2); }
+
+  /* ---------- TOC ---------- */
+  nav.toc { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px,1fr)); gap: 10px; margin-top: 30px; }
+  nav.toc a {
+    border: 1px solid var(--border); border-radius: 10px; padding: 12px 14px; color: var(--ink-2);
+    background: var(--surface); font-size: 14px; display: flex; gap: 9px; align-items: baseline; transition: transform .12s, border-color .15s;
+  }
+  nav.toc a:hover { transform: translateY(-2px); border-color: var(--c-cdp); }
+  nav.toc .t-num { color: var(--c-cdp); font-weight: 800; font-variant-numeric: tabular-nums; }
+
+  /* ---------- callouts ---------- */
+  .callout { border: 1px solid var(--border); border-left: 4px solid var(--c-cdp); background: var(--surface); border-radius: 10px; padding: 16px 18px; margin: 20px 0; font-size: 15px; }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.good { border-left-color: var(--good); }
+  .callout.crit { border-left-color: var(--critical); }
+  .callout .h { font-weight: 680; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+  .callout .ico { font-size: 15px; }
+
+  /* ---------- KPI tiles ---------- */
+  .kpis { display: grid; grid-template-columns: repeat(auto-fit,minmax(160px,1fr)); gap: 14px; margin: 8px 0 4px; }
+  .kpi { border: 1px solid var(--border); border-radius: var(--radius); padding: 18px; background: var(--surface); box-shadow: var(--shadow); }
+  .kpi .v { font-size: 30px; font-weight: 780; letter-spacing: -.02em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .kpi .l { font-size: 13px; color: var(--muted); margin-top: 4px; }
+  .kpi .sub { font-size: 12px; color: var(--ink-2); margin-top: 6px; }
+
+  /* ---------- generic table ---------- */
+  .tbl-wrap { overflow-x: auto; border: 1px solid var(--border); border-radius: var(--radius); box-shadow: var(--shadow); margin: 18px 0; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: var(--surface); min-width: 560px; }
+  th, td { text-align: left; padding: 11px 14px; border-bottom: 1px solid var(--border-2); vertical-align: top; }
+  thead th { background: var(--surface-2); font-weight: 650; color: var(--ink-2); position: sticky; top: 0; font-size: 12.5px; letter-spacing: .02em; }
+  tbody tr:last-child td { border-bottom: none; }
+  td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .rate { font-weight: 700; }
+  .rate.s5 { color: var(--good); } .rate.s4 { color: var(--c-api); } .rate.s3 { color: var(--warn); } .rate.s2 { color: var(--serious); } .rate.s1 { color: var(--critical); }
+
+  /* ---------- chart primitives ---------- */
+  .chart { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 20px 22px 16px; box-shadow: var(--shadow); margin: 18px 0; }
+  .chart h4 { margin: 0 0 2px; font-size: 16px; font-weight: 680; }
+  .chart .cap { font-size: 13px; color: var(--muted); margin: 0 0 18px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 12px; margin: 4px 0 16px; font-size: 12.5px; color: var(--ink-2); }
+  .legend .it { display: inline-flex; align-items: center; gap: 6px; }
+  .legend .sw { width: 11px; height: 11px; border-radius: 3px; }
+
+  .bars { display: flex; flex-direction: column; gap: 13px; }
+  .bar-row { display: grid; grid-template-columns: 116px 1fr auto; gap: 12px; align-items: center; }
+  .bar-row .name { font-size: 13.5px; color: var(--ink-2); text-align: right; }
+  .track { position: relative; height: 22px; background: var(--surface-2); border-radius: 6px; overflow: hidden; }
+  .fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 6px 4px 4px 6px; min-width: 3px; transition: width .9s cubic-bezier(.4,0,.2,1); }
+  .bar-row .val { font-size: 13px; font-variant-numeric: tabular-nums; font-weight: 640; color: var(--ink); min-width: 78px; text-align: right; }
+  .bar-row .val small { color: var(--muted); font-weight: 400; }
+  .chart .foot { font-size: 12px; color: var(--muted); margin-top: 14px; border-top: 1px solid var(--border-2); padding-top: 10px; }
+
+  /* radar-ish attribute grid */
+  .attrgrid { display: grid; grid-template-columns: repeat(auto-fit,minmax(230px,1fr)); gap: 16px; }
+  .pcard { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 18px; box-shadow: var(--shadow); }
+  .pcard .top { display: flex; align-items: center; gap: 9px; margin-bottom: 14px; }
+  .pcard .tag { width: 10px; height: 10px; border-radius: 3px; }
+  .pcard .top b { font-size: 15.5px; }
+  .pcard .top .pm { font-size: 12px; color: var(--muted); margin-left: auto; }
+  .metric { display: grid; grid-template-columns: 62px 1fr; gap: 8px; align-items: center; margin: 7px 0; font-size: 12.5px; }
+  .metric .ml { color: var(--muted); }
+  .dots { display: flex; gap: 4px; }
+  .dots i { width: 13px; height: 7px; border-radius: 2px; background: var(--baseline); }
+  .dots i.on { background: var(--c-cdp); }
+
+  /* tool cards */
+  .tools { display: grid; grid-template-columns: repeat(auto-fill,minmax(300px,1fr)); gap: 16px; }
+  .tool { border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); padding: 18px 18px 16px; box-shadow: var(--shadow); position: relative; overflow: hidden; }
+  .tool::before { content:""; position:absolute; left:0; top:0; bottom:0; width:4px; background: var(--bar,var(--c-cdp)); }
+  .tool h4 { margin: 0 0 3px; font-size: 16.5px; padding-left: 6px; }
+  .tool .role { font-size: 12px; color: var(--muted); margin: 0 0 12px; padding-left: 6px; }
+  .tool ul { margin: 8px 0 0; padding-left: 24px; font-size: 13.5px; color: var(--ink-2); }
+  .tool li { margin: 3px 0; }
+  .tool .pro::marker { color: var(--good); }
+  .tool .con::marker { color: var(--critical); }
+  .badge { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 6px; background: var(--surface-2); border: 1px solid var(--border-2); color: var(--ink-2); margin-left: 6px; vertical-align: middle; }
+  .verified { color: var(--good); border-color: color-mix(in srgb,var(--good) 40%, transparent); }
+  .refuted { color: var(--critical); border-color: color-mix(in srgb,var(--critical) 40%, transparent); }
+
+  /* decision tree */
+  .tree { font-family: var(--mono); font-size: 13px; line-height: 1.9; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: 22px 20px; overflow-x: auto; box-shadow: var(--shadow); }
+  .tree .q { color: var(--c-cdp); font-weight: 700; }
+  .tree .a { color: var(--good); font-weight: 700; }
+  .tree .n { color: var(--muted); }
+  .tree .r { color: var(--ink); background: var(--surface-2); padding: 1px 7px; border-radius: 5px; border: 1px solid var(--border-2); }
+
+  /* demo flow */
+  .flow { display: grid; grid-template-columns: repeat(auto-fit,minmax(150px,1fr)); gap: 12px; margin: 20px 0; }
+  .step { border: 1px solid var(--border); border-radius: 12px; padding: 14px; background: var(--surface); position: relative; }
+  .step .s-n { font-size: 12px; color: var(--c-cdp); font-weight: 800; }
+  .step .s-t { font-weight: 640; font-size: 14px; margin: 3px 0; }
+  .step .s-d { font-size: 12.5px; color: var(--muted); }
+
+  .samples { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px){ .samples { grid-template-columns: 1fr; } }
+  .sample { border: 1px solid var(--border); border-radius: 12px; background: var(--surface); padding: 14px 16px; font-size: 13px; }
+  .sample .st { font-weight: 680; margin-bottom: 8px; display: flex; align-items: center; gap: 8px; }
+  .sample ol { margin: 0; padding-left: 20px; color: var(--ink-2); }
+  .sample li { margin: 4px 0; }
+  .sample .pts { color: var(--c-api); font-weight: 700; font-variant-numeric: tabular-nums; }
+
+  .foot-note { font-size: 13px; color: var(--muted); }
+  footer { padding: 40px 0 70px; }
+  .src-list { font-size: 13px; color: var(--ink-2); columns: 2; column-gap: 30px; }
+  @media (max-width:640px){ .src-list { columns: 1; } }
+  .src-list li { margin: 5px 0; break-inside: avoid; }
+  hr.soft { border: none; border-top: 1px solid var(--border-2); margin: 30px 0; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; }
+  @media (max-width: 760px){ .two-col { grid-template-columns: 1fr; } .bar-row { grid-template-columns: 92px 1fr auto; } .bar-row .name{ font-size:12px;} }
+  .tag-inline { display:inline-flex; align-items:center; gap:5px; }
+  .tag-inline .dot { width:9px;height:9px;border-radius:2px; }
+
+  /* 看代码按钮 + 弹层 */
+  .code-btn{border:1px solid var(--border);border-radius:7px;padding:3px 9px;background:var(--surface-2);color:var(--ink-2);
+    font-size:11.5px;font-weight:600;cursor:pointer;font-family:inherit;white-space:nowrap;transition:border-color .15s,color .15s;}
+  .code-btn:hover{border-color:var(--bar,var(--c-cdp));color:var(--ink);}
+  .modal-bd{position:fixed;inset:0;z-index:100;background:rgba(11,11,11,.55);backdrop-filter:blur(3px);
+    display:none;align-items:center;justify-content:center;padding:24px;}
+  .modal-bd.show{display:flex;}
+  .code-modal{background:var(--surface);border:1px solid var(--border);border-radius:14px;box-shadow:var(--shadow);
+    max-width:820px;width:100%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden;border-top:4px solid var(--bar,var(--c-cdp));}
+  .code-modal .mhead{display:flex;align-items:center;gap:10px;padding:16px 20px;border-bottom:1px solid var(--border-2);}
+  .code-modal .mhead .sw{width:12px;height:12px;border-radius:3px;background:var(--bar,var(--c-cdp));flex:none;}
+  .code-modal .mhead .t{font-weight:700;font-size:15.5px;}
+  .code-modal .mhead .sub{font-size:12.5px;color:var(--muted);}
+  .code-modal .mhead .x{margin-left:auto;border:none;background:none;color:var(--muted);font-size:22px;line-height:1;cursor:pointer;padding:0 4px;}
+  .code-modal .mhead .x:hover{color:var(--ink);}
+  .code-modal .note{padding:12px 20px 0;font-size:13px;color:var(--ink-2);line-height:1.55;}
+  .code-modal .note b{color:var(--bar,var(--c-cdp));}
+  .code-modal pre{margin:12px 20px 20px;padding:16px;background:var(--surface-2);border:1px solid var(--border-2);border-radius:10px;
+    overflow:auto;font-family:var(--mono);font-size:12.5px;line-height:1.6;color:var(--ink);}
+  .code-modal .tag-k{color:var(--c-cdp);font-weight:600;}
+
+  /* 桌面 a11y 实测卡片 */
+  .uia-card{margin-top:14px;padding:14px 16px;background:var(--surface-2);border:1px solid var(--border-2);
+    border-left:3px solid var(--c-a11y);border-radius:10px;}
+  .uia-card .uia-h{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:8px;}
+  .uia-card .uia-sub{font-size:12.5px;color:var(--ink-2);line-height:1.6;margin:0;}
+  .uia-card .uia-out{margin:10px 0 2px;padding:12px 14px;background:var(--surface);border:1px solid var(--border-2);
+    border-radius:8px;font-family:var(--mono);font-size:11.5px;line-height:1.55;color:var(--ink);overflow:auto;white-space:pre;}
+  .uia-card code{font-family:var(--mono);font-size:12px;background:var(--surface);padding:1px 5px;border-radius:4px;border:1px solid var(--border-2);}
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="kicker">深度调研 · 实测对决 · 工程选型</div>
+    <h1>AI Agent 到底怎么操作电脑？<br>四种范式的原理、优劣与真实对决</h1>
+    <p class="lede">从像素视觉到 API 直连，Agent 操作计算机的所有方案本质只有两个问题：<b>怎么看</b>、<b>怎么动</b>。本文把它们拆成四种范式逐个对比，并在同一真实任务上让五条路径同场竞速——所有数字均为本机实测。</p>
+    <div class="meta-row">
+      <span class="pill"><span class="dot" style="background:var(--good)"></span>21 条论断经 3 票对抗验证</span>
+      <span class="pill"><span class="dot" style="background:var(--c-cdp)"></span>6 路同批次实测</span>
+      <span>靶场 <b>news.ycombinator.com</b></span>
+      <span>实测环境 <b>Node v24 · win32</b></span>
+      <span>基准快照 <b>2024–2026</b></span>
+    </div>
+    <nav class="toc">
+      <a href="#framework"><span class="t-num">01</span><span>总框架：看与动</span></a>
+      <a href="#paradigms"><span class="t-num">02</span><span>四范式详解</span></a>
+      <a href="#a11y"><span class="t-num">03</span><span>a11y：浏览器 vs 桌面</span></a>
+      <a href="#tools"><span class="t-num">04</span><span>具名工具逐个对比</span></a>
+      <a href="#demo"><span class="t-num">05</span><span>Demo 对决设计</span></a>
+      <a href="#results"><span class="t-num">06</span><span>实测结果</span></a>
+      <a href="#bench"><span class="t-num">07</span><span>学术基准</span></a>
+      <a href="#pick"><span class="t-num">08</span><span>工程选型决策树</span></a>
+      <a href="#caveat"><span class="t-num">09</span><span>局限与勘误</span></a>
+    </nav>
+  </div>
+</header>
+
+<main class="wrap">
+
+<!-- ============ 01 FRAMEWORK ============ -->
+<section id="framework">
+  <h2><span class="num">01</span>总框架：一切归结为「怎么看」和「怎么动」</h2>
+  <p class="sec-sub">无论工具名字多花哨，差异本质只有两个维度：感知从哪来、动作打到哪一层。</p>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>范式</th><th>怎么看（感知）</th><th>怎么动（动作）</th><th>作用层</th></tr></thead>
+      <tbody>
+        <tr><td><span class="tag-inline"><span class="dot" style="background:var(--c-vision)"></span><b>① 像素视觉</b></span></td><td>屏幕截图（像素）</td><td>模拟鼠标/键盘坐标点击</td><td>整个屏幕 / 任意 GUI</td></tr>
+        <tr><td><span class="tag-inline"><span class="dot" style="background:var(--c-cdp)"></span><b>② DOM/CDP</b></span></td><td>HTML DOM 结构树</td><td>选择器 / CDP 协议命令</td><td>浏览器内部</td></tr>
+        <tr><td><span class="tag-inline"><span class="dot" style="background:var(--c-a11y)"></span><b>③ 无障碍树</b></span></td><td>OS 语义控件树 (a11y)</td><td>控件级 invoke</td><td>桌面应用 + 网页</td></tr>
+        <tr><td><span class="tag-inline"><span class="dot" style="background:var(--c-api)"></span><b>④ API/MCP</b></span></td><td>结构化数据 / 工具 schema</td><td>直接调函数</td><td>绕过 UI</td></tr>
+        <tr><td><span class="tag-inline"><span class="dot" style="background:var(--c-hybrid)"></span><b>⑤ 混合(视觉+DOM)</b></span></td><td>截图 + DOM 标注框</td><td>定位后执行</td><td>主要在浏览器</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout good">
+    <div class="h"><span class="ico">✓</span>核心判断（已验证 · 跨工具综合）</div>
+    <b>通用性与可靠性/成本成反比。</b>像素视觉最通用（任何界面都能开），但最慢、最难定位、可靠性最低；越往 DOM/API 下沉，越快、越准、越便宜，但适用面越窄。这条规律贯穿全文，也是第 07 节决策树的地基。
+  </div>
+</section>
+
+<!-- ============ 02 PARADIGMS ============ -->
+<section id="paradigms">
+  <h2><span class="num">02</span>四范式通用优劣</h2>
+  <p class="sec-sub">五个维度打分（●=强）。分数为综合研判，具体百分比见第 05、06 节实测与基准。</p>
+
+  <div class="legend">
+    <span class="it"><span class="sw" style="background:var(--c-vision)"></span>① 像素视觉</span>
+    <span class="it"><span class="sw" style="background:var(--c-cdp)"></span>② DOM/CDP</span>
+    <span class="it"><span class="sw" style="background:var(--c-a11y)"></span>③ 无障碍树</span>
+    <span class="it"><span class="sw" style="background:var(--c-api)"></span>④ API/MCP</span>
+    <span class="it"><span class="sw" style="background:var(--c-hybrid)"></span>⑤ 混合</span>
+  </div>
+
+  <div class="attrgrid">
+    <!-- vision -->
+    <div class="pcard">
+      <div class="top"><span class="tag" style="background:var(--c-vision)"></span><b>① 像素视觉</b><span class="pm">最通用 · 最贵</span></div>
+      <div class="metric"><span class="ml">通用性</span><span class="dots" data-on="5" style="--dc:var(--c-vision)"></span></div>
+      <div class="metric"><span class="ml">可靠性</span><span class="dots" data-on="2" style="--dc:var(--c-vision)"></span></div>
+      <div class="metric"><span class="ml">速度</span><span class="dots" data-on="2" style="--dc:var(--c-vision)"></span></div>
+      <div class="metric"><span class="ml">低成本</span><span class="dots" data-on="1" style="--dc:var(--c-vision)"></span></div>
+      <div class="metric"><span class="ml">可维护</span><span class="dots" data-on="3" style="--dc:var(--c-vision)"></span></div>
+    </div>
+    <!-- dom -->
+    <div class="pcard">
+      <div class="top"><span class="tag" style="background:var(--c-cdp)"></span><b>② DOM/CDP</b><span class="pm">最快 · 仅浏览器</span></div>
+      <div class="metric"><span class="ml">通用性</span><span class="dots" data-on="2" style="--dc:var(--c-cdp)"></span></div>
+      <div class="metric"><span class="ml">可靠性</span><span class="dots" data-on="4" style="--dc:var(--c-cdp)"></span></div>
+      <div class="metric"><span class="ml">速度</span><span class="dots" data-on="5" style="--dc:var(--c-cdp)"></span></div>
+      <div class="metric"><span class="ml">低成本</span><span class="dots" data-on="5" style="--dc:var(--c-cdp)"></span></div>
+      <div class="metric"><span class="ml">可维护</span><span class="dots" data-on="2" style="--dc:var(--c-cdp)"></span></div>
+    </div>
+    <!-- a11y -->
+    <div class="pcard">
+      <div class="top"><span class="tag" style="background:var(--c-a11y)"></span><b>③ 无障碍树</b><span class="pm">结构化 · 覆盖看运气</span></div>
+      <div class="metric"><span class="ml">通用性</span><span class="dots" data-on="4" style="--dc:var(--c-a11y)"></span></div>
+      <div class="metric"><span class="ml">可靠性</span><span class="dots" data-on="4" style="--dc:var(--c-a11y)"></span></div>
+      <div class="metric"><span class="ml">速度</span><span class="dots" data-on="4" style="--dc:var(--c-a11y)"></span></div>
+      <div class="metric"><span class="ml">低成本</span><span class="dots" data-on="3" style="--dc:var(--c-a11y)"></span></div>
+      <div class="metric"><span class="ml">可维护</span><span class="dots" data-on="3" style="--dc:var(--c-a11y)"></span></div>
+    </div>
+    <!-- api -->
+    <div class="pcard">
+      <div class="top"><span class="tag" style="background:var(--c-api)"></span><b>④ API/MCP</b><span class="pm">最稳 · 需目标暴露</span></div>
+      <div class="metric"><span class="ml">通用性</span><span class="dots" data-on="1" style="--dc:var(--c-api)"></span></div>
+      <div class="metric"><span class="ml">可靠性</span><span class="dots" data-on="5" style="--dc:var(--c-api)"></span></div>
+      <div class="metric"><span class="ml">速度</span><span class="dots" data-on="5" style="--dc:var(--c-api)"></span></div>
+      <div class="metric"><span class="ml">低成本</span><span class="dots" data-on="5" style="--dc:var(--c-api)"></span></div>
+      <div class="metric"><span class="ml">可维护</span><span class="dots" data-on="5" style="--dc:var(--c-api)"></span></div>
+    </div>
+    <!-- hybrid -->
+    <div class="pcard">
+      <div class="top"><span class="tag" style="background:var(--c-hybrid)"></span><b>⑤ 混合</b><span class="pm">抗改版 · 较贵</span></div>
+      <div class="metric"><span class="ml">通用性</span><span class="dots" data-on="3" style="--dc:var(--c-hybrid)"></span></div>
+      <div class="metric"><span class="ml">可靠性</span><span class="dots" data-on="4" style="--dc:var(--c-hybrid)"></span></div>
+      <div class="metric"><span class="ml">速度</span><span class="dots" data-on="3" style="--dc:var(--c-hybrid)"></span></div>
+      <div class="metric"><span class="ml">低成本</span><span class="dots" data-on="2" style="--dc:var(--c-hybrid)"></span></div>
+      <div class="metric"><span class="ml">可维护</span><span class="dots" data-on="4" style="--dc:var(--c-hybrid)"></span></div>
+    </div>
+  </div>
+
+  <div class="two-col" style="margin-top:26px">
+    <div>
+      <h3>③ 无障碍树 & ④ API/MCP 的定位</h3>
+      <p><b>无障碍树</b>介于像素与 DOM 之间——读 OS 为读屏软件暴露的语义控件树（Windows UIA / macOS AX / Web ARIA），拿到「这是个名为『提交』的按钮」。比截图省 token、比 DOM 跨得更广（覆盖原生桌面），但很多自绘 UI / Canvas / 游戏 a11y 信息缺失。</p>
+      <div class="uia-card">
+        <div class="uia-h">
+          <span class="tag-inline"><span class="dot" style="background:var(--c-a11y)"></span><b>a11y 不止浏览器：桌面原生应用同样能读</b></span>
+          <button class="code-btn" data-code="uia">👁 看代码</button>
+        </div>
+        <p class="uia-sub">Demo 里的 a11y 走的是浏览器 CDP <code>getFullAXTree</code>。同一范式在<b>桌面 OS</b> 有独立底层 API：<b>Windows UIA</b> / <b>macOS AXUIElement</b> / <b>Linux AT-SPI</b>——都是给读屏软件（NVDA/VoiceOver）用的语义树，App 只要支持无障碍就免费暴露给 Agent。</p>
+        <p class="uia-sub" style="margin-top:6px">本机用 Python <code>uiautomation</code> 在<b>真实系统计算器</b>上实测：读控件树 → 按<b>控件名</b>点按钮算 7×8 → 读回结果，<b>全程零屏幕坐标</b>。真实输出：</p>
+        <pre class="uia-out">GroupControl   Number pad          ← role=分组, name=数字键盘
+  ButtonControl  Seven             ← role=按钮, name=Seven（和网页 {role,name} 同构）
+  ButtonControl  Multiply by
+TextControl    Display is 0        ← 结果控件，语义属性直接可读
+
+Invoke 按钮 Name="Seven"           ← UIA 激活控件，非模拟鼠标点像素
+Invoke 按钮 Name="Multiply by"
+Invoke 按钮 Name="Eight"
+Invoke 按钮 Name="Equals"
+结果控件读到 : Display is 56        ← 从语义属性取，非 OCR 截图
+断言 7×8=56 : ✓ 通过  (pixel_coordinates_used: false)</pre>
+      </div>
+      <p><b>API/MCP</b> 不是「操作电脑」的竞品，而是<b>天花板对照组</b>：能用接口就别去点 UI。MCP 让「为每个集成写死胶水」变成「实现一次、接入生态」。它的存在也提醒我们——UI 操作范式的全部意义，是为「没有 API 的那部分世界」兜底。</p>
+    </div>
+    <div>
+      <h3>三条压舱石判断 <span class="badge verified">✓ 已验证</span></h3>
+      <p><b>1. 像素视觉 = 最通用但最弱。</b>任何界面都能开，但慢、贵、grounding 难、可靠性最低（OSWorld 发布期 &lt;25% vs 人类 ~72%）。</p>
+      <p><b>2. DOM/CDP = 最快最便宜最准，但只在浏览器且怕改版</b>——除非用 AI 中介（如 Skyvern）化解选择器脆性。</p>
+      <p><b>3. 混合 = 截图做 grounding + DOM 抽可点元素</b>（Set-of-Marks / Vision-LLM 映射），用算力换鲁棒性。</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 03 A11Y BRIDGE ============ -->
+<section id="a11y">
+  <h2><span class="num">03</span>a11y 范式：浏览器 vs 桌面 OS</h2>
+  <p class="sec-sub">同一棵语义树，两个入口。Demo 里读的是浏览器内的 AX 树；换到桌面原生应用，走的是 OS 无障碍 API——role/name 结构完全同构。</p>
+
+  <p style="margin-bottom:18px">无障碍树不是浏览器发明的，它源自操作系统给<b>读屏软件</b>（Windows 的 NVDA/JAWS、macOS 的 VoiceOver、Linux 的 Orca）设计的标准接口。应用只要支持读屏（大厂 App 基本都合规实现），就等于<b>免费给了 Agent 一棵语义树</b>——拿到的是 <code style="font-family:var(--mono);font-size:12px">{role:"button", name:"发送", enabled:true}</code> 这样的结构化控件，而非像素。</p>
+
+  <div class="tree" style="line-height:1.7;font-size:12.5px">
+              <span class="q">┌─────────────────────────────────────┐</span>
+              <span class="q">│            AI Agent                  │</span>
+              <span class="q">└──────────┬──────────────┬────────────┘</span>
+                         │              │
+              <b>浏览器内的网页</b>          <b>桌面原生应用</b>
+                         │              │
+         <span class="r">CDP Accessibility 域</span>      <span class="r">OS 无障碍 API</span>
+         <span class="n">(Chromium 自己的 AX 树)</span>   ├─ <b style="color:var(--c-a11y)">UIA</b>    (Windows)
+                         │        ├─ <b style="color:var(--c-a11y)">AX</b>     (macOS)
+                         │        └─ <b style="color:var(--c-a11y)">AT-SPI</b> (Linux)
+                         │              │
+      <span class="n">getFullAXTree ← 拉整棵树</span>   <span class="n">遍历 ControlType / AXRole 树</span>
+                         └──────┬───────┘
+                          <b>role + name，两边同构</b>
+                         <span class="n">（浏览器也把网页 AX 树桥接给 OS UIA）</span>
+  </div>
+
+  <div class="two-col" style="margin-top:26px">
+    <div>
+      <h3>三大桌面平台的无障碍 API</h3>
+      <table>
+        <thead><tr><th>平台</th><th>API</th><th>说明</th></tr></thead>
+        <tbody>
+          <tr><td><b>Windows</b></td><td><span class="tag-inline"><span class="dot" style="background:var(--c-a11y)"></span>UI Automation (UIA)</span></td><td>微软官方，取代旧 MSAA。Win32/WPF/UWP/Electron 都支持，生态最完善。工具：pywinauto、FlaUI、Power Automate Desktop</td></tr>
+          <tr><td><b>macOS</b></td><td><span class="tag-inline"><span class="dot" style="background:var(--c-a11y)"></span>Accessibility (AX)</span></td><td><code style="font-family:var(--mono);font-size:11px">AXUIElement</code> 体系，VoiceOver 就靠它。权限门槛高——须显式授权「辅助功能」+「屏幕录制」</td></tr>
+          <tr><td><b>Linux</b></td><td><span class="tag-inline"><span class="dot" style="background:var(--c-a11y)"></span>AT-SPI2</span></td><td>通过 D-Bus 暴露，GNOME/GTK/Qt 应用支持。库：pyatspi</td></tr>
+        </tbody>
+      </table>
+      <p style="margin-top:10px;font-size:13px;color:var(--ink-2)">有意思的是：<b>浏览器本身也是个 OS 应用</b>。Chrome 会把网页的 AX 树桥接到 Windows UIA——所以理论上用 UIA 也能读到网页内容，只是没有 CDP 直接读浏览器内部树那么快、那么全。</p>
+    </div>
+    <div>
+      <h3>桌面 a11y 的优劣（对照报告 §02）</h3>
+      <p><b class="pro" style="color:var(--good)">✓ 优势</b>：语义化（按名字/角色操作，不点像素）；稳（窗口移动/换主题/换分辨率都不影响）；省 token；能拿到隐藏属性（enabled/checked/value）。</p>
+      <p><b class="con" style="color:var(--critical)">✗ 劣势</b>：<b>强依赖应用是否好好实现无障碍</b>——自绘 UI（游戏、部分国产软件、Electron 里的 canvas、Flutter 早期）几乎是空树；完整树很嘈杂（和 §05 实测「a11y 全树最费 token 13812」同一个坑）；macOS 权限门槛高；跨平台要写三套。</p>
+      <p><b>适用</b>：标准控件为主的传统桌面软件（Office、系统设置、Win32 表单、浏览器）。<br><b>不适用</b>：自绘 / 游戏 / 远程桌面画面 / 图片内文字 → 只能退回<b>像素视觉范式</b>（这正是 Claude CU、UI-TARS 的立身之本：它不挑应用是否实现无障碍）。</p>
+    </div>
+  </div>
+
+  <p style="margin-top:22px;padding:14px 16px;background:var(--surface-2);border-left:3px solid var(--c-a11y);border-radius:8px;font-size:13.5px">
+    <b>一句话选型：</b>应用规规矩矩用系统控件 → 桌面 a11y（UIA 等）首选，又快又稳又省 token；应用自绘 / 没实现无障碍 / 是画面 → 只能上视觉截图。实战里成熟 GUI Agent（UI-TARS、Operator）常<b>混用</b>：先读 a11y 树拿结构，读不到的区域再用视觉兜底。上一节那张桌面计算器实测卡片（<span style="color:var(--c-a11y)">👁 看代码</span>）就是 Windows UIA 的完整跑通证据。
+  </p>
+</section>
+
+<!-- ============ 04 TOOLS ============ -->
+<section id="tools">
+  <h2><span class="num">04</span>具名工具逐个对比</h2>
+  <p class="sec-sub">徽标含义：<span class="badge verified">✓ 已验证</span> 通过对抗验证 · <span class="badge refuted">✗ 已证伪</span> 研究中被推翻，勿引用。</p>
+
+  <h3>桌面 / OS 级视觉 GUI Agent（范式①）</h3>
+  <div class="tools">
+    <div class="tool" style="--bar:var(--c-vision)">
+      <h4>Claude Computer Use</h4>
+      <div class="role">Anthropic · 纯像素视觉 <span class="badge verified">✓</span></div>
+      <ul>
+        <li class="pro">✓ 只看截图、发人类式鼠键动作，训练时「精确数像素」算光标位移；<b>不读 DOM/a11y/API</b></li>
+        <li class="pro">✓ 极致通用：凡人能点的它理论都能操作，跨应用跨系统免适配</li>
+        <li class="con">✗ 官方自认「实验性、慢、常出错」；连滚动/拖拽/缩放都仍有挑战</li>
+        <li class="con">✗ OSWorld 纯截图 14.9%→22%（vs 人类 ~72%）</li>
+      </ul>
+    </div>
+    <div class="tool" style="--bar:var(--c-vision)">
+      <h4>UI-TARS</h4>
+      <div class="role">ByteDance · 原生端到端视觉模型 <span class="badge verified">✓</span></div>
+      <ul>
+        <li class="pro">✓ 原生 GUI 模型，只吃截图输出键鼠，把视觉接地训进模型而非外挂 prompt</li>
+        <li class="pro">✓ OSWorld-72B <b>24.6</b>（50 步）/ 22.7（15 步），同步数下压过 Claude</li>
+        <li class="con">✗ 数值为字节第一方报告，锚点用的是 Anthropic 自报的 Claude 数字</li>
+        <li class="con">✗ 绝对成功率仍远低于人类；早期数字已被更新 SOTA 超越</li>
+      </ul>
+    </div>
+    <div class="tool" style="--bar:var(--c-vision)">
+      <h4>Operator / Mariner<span class="badge">⚠ 二手</span></h4>
+      <div class="role">OpenAI CUA · Google · 未终验</div>
+      <ul>
+        <li class="pro">✓ 同属视觉范式；Operator 报告 OSWorld 38.1% / WebArena 58.1%（⚠ 二手）</li>
+        <li class="pro">✓ Mariner 为实验性 Chrome 扩展，理解屏幕+页面内容导航</li>
+        <li class="con">✗ 本次研究未产出经对抗验证的独立论断，仅作方向性参考</li>
+      </ul>
+    </div>
+  </div>
+
+  <h3>面向 LLM 的浏览器框架（范式② / ⑤）</h3>
+  <div class="tools">
+    <div class="tool" style="--bar:var(--c-cdp)">
+      <h4>browser-use</h4>
+      <div class="role">DOM harness · 10万+ star <span class="badge verified">✓</span></div>
+      <ul>
+        <li class="pro">✓ 使命「Make websites accessible for AI agents」，主要从 DOM 驱动（视觉可选）</li>
+        <li class="pro">✓ 最初基于 Playwright，约 v0.6 迁移直连 CDP（cdp-use）</li>
+        <li class="con">✗ 「89.1% WebVoyager SOTA」被证伪 <span class="badge refuted">✗ 1-2</span></li>
+        <li class="con">✗ 「bu-2-0 提速 3–5×」被证伪 <span class="badge refuted">✗ 1-2</span></li>
+      </ul>
+    </div>
+    <div class="tool" style="--bar:var(--c-cdp)">
+      <h4>Stagehand</h4>
+      <div class="role">Browserbase · 生产可靠性折中 <span class="badge verified">✓</span></div>
+      <ul>
+        <li class="pro">✓ 定位在「底层代码」与「不可控高层 Agent」之间：预览动作、缓存、自愈</li>
+        <li class="pro">✓ 让你在确定性代码里按需插入 AI 步骤</li>
+        <li class="con">✗ 「具体为 CDP-engine 框架」被证伪 <span class="badge refuted">✗ 0-3</span></li>
+        <li class="con">✗ 「act/agent/extract 三原语」被证伪 <span class="badge refuted">✗ 0-3</span>（以官方最新文档为准）</li>
+      </ul>
+    </div>
+    <div class="tool" style="--bar:var(--c-hybrid)">
+      <h4>Skyvern <button class="code-btn" data-code="skyvern" style="margin-left:6px">👁 看原理</button></h4>
+      <div class="role">混合范式 · Set-of-Marks 映射 <span class="badge verified">✓</span></div>
+      <ul>
+        <li class="pro">✓ 同时喂<b>截图 + DOM + 元素标注框</b>（Set-of-Marks），让 LLM 每步重新理解页面</li>
+        <li class="pro">✓ <b>刻意不写死 XPath/CSS</b> → 换来抗页面改版；Playwright 只作执行层</li>
+        <li class="pro">✓ 视觉负责「理解语义」、DOM 负责「精确定位」，各取所长</li>
+        <li class="con">✗ 「未见网站/抗改版」为厂商设计意图，未经独立基准验证</li>
+        <li class="con">✗ 每步都跑多模态 LLM → 比纯 DOM 更烧算力/token、更慢</li>
+      </ul>
+    </div>
+    <div class="tool" style="--bar:var(--c-dom)">
+      <h4>LaVague</h4>
+      <div class="role">Large Action Model · 代码编译 <span class="badge verified">✓</span></div>
+      <ul>
+        <li class="pro">✓ 双组件：World Model 规划 + Action Engine 把指令编译成 Selenium/Playwright 代码</li>
+        <li class="pro">✓ 基于 DOM，产出可复用、可审计的自动化代码；默认 gpt-4o</li>
+        <li class="con">✗ 项目活跃度据报已放缓</li>
+      </ul>
+    </div>
+    <div class="tool" style="--bar:var(--c-hybrid)">
+      <h4>WebVoyager</h4>
+      <div class="role">研究基准 + 混合范式样例 <span class="badge verified">✓</span></div>
+      <ul>
+        <li class="pro">✓ LMM 驱动，截图 + DOM 抽取元素（Set-of-Marks 编号框）融合</li>
+        <li class="pro">✓ 配套基准 643 任务 / 15 真实网站 + 90 GAIA；报告成功率 59.1%</li>
+        <li class="con">✗ 主模式用 DOM 元素抽取而非完整 a11y 树</li>
+      </ul>
+    </div>
+    <div class="tool" style="--bar:var(--c-cdp)">
+      <h4>Playwright / Puppeteer / Selenium</h4>
+      <div class="role">底层执行引擎 · 无 AI <span class="badge">○ 背景</span></div>
+      <ul>
+        <li class="pro">✓ 极快、极准、成本极低（不烧视觉 token）、可断言、可并发</li>
+        <li class="pro">✓ Playwright 持久 WebSocket + 自动等待；Selenium 覆盖最广</li>
+        <li class="con">✗ 只操作浏览器；依赖选择器，页面改版即断裂</li>
+        <li class="con">✗ 需工程师写死脚本，无「看懂新页面」的泛化能力</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 05 DEMO DESIGN ============ -->
+<section id="demo">
+  <h2><span class="num">05</span>Demo 对决：用真实场景验证</h2>
+  <p class="sec-sub">光讲优劣不够有说服力。我设计一个同任务擂台，让各范式同场竞速，用真实数字说话。</p>
+
+  <div class="two-col">
+    <div>
+      <h3>统一任务</h3>
+      <p>从 <b>Hacker News 首页</b>提取前 10 条的结构化数据：<br><code>{ 标题, 分数, 作者, 评论数 }</code>。</p>
+      <h3>为什么选 HN 当擂台</h3>
+      <p>它是罕见的「四范式都能真跑」的公平靶场——<b>同一目标同时暴露四个作用面</b>：</p>
+      <ul style="font-size:14px;color:var(--ink-2)">
+        <li>公开 API（Algolia / Firebase）→ 测范式 ④</li>
+        <li>稳定的 HTML DOM → 测范式 ②</li>
+        <li>完整无障碍树 → 测范式 ③</li>
+        <li>可截图渲染 → 测范式 ①</li>
+      </ul>
+    </div>
+    <div>
+      <h3>统一评测指标</h3>
+      <div class="kpis" style="grid-template-columns:1fr 1fr">
+        <div class="kpi"><div class="v" style="font-size:19px">端到端延迟</div><div class="sub">从发起到拿到结果 (ms)</div></div>
+        <div class="kpi"><div class="v" style="font-size:19px">LLM tokens</div><div class="sub">送入模型的上下文估算</div></div>
+        <div class="kpi"><div class="v" style="font-size:19px">网络 payload</div><div class="sub">传输字节数</div></div>
+        <div class="kpi"><div class="v" style="font-size:19px">解析步数 / 脆性</div><div class="sub">代码复杂度 + 字段缺失率</div></div>
+      </div>
+      <div class="callout" style="margin-top:16px">
+        <div class="h">五条真跑路径</div>
+        ① 像素视觉截图 · ② DOM 正则解析 · ②b CDP 页内提取 · ③ 无障碍树 (AX Tree) · ④ API/MCP 直连。全部在本机用 Node 24 + Playwright Chromium 实跑，非估算。
+      </div>
+    </div>
+  </div>
+
+  <div class="flow">
+    <div class="step"><div class="s-n">STEP 1</div><div class="s-t">发起感知</div><div class="s-d">截图 / 拉 HTML / 取 AX 树 / 请求 API</div></div>
+    <div class="step"><div class="s-n">STEP 2</div><div class="s-t">获得原始载荷</div><div class="s-d">PNG · HTML · JSON 树 · JSON</div></div>
+    <div class="step"><div class="s-n">STEP 3</div><div class="s-t">抽取字段</div><div class="s-d">视觉识别 / 选择器 / 遍历 / 直取</div></div>
+    <div class="step"><div class="s-n">STEP 4</div><div class="s-t">度量</div><div class="s-d">延迟 · token · 字节 · 脆性</div></div>
+  </div>
+</section>
+
+<!-- ============ 06 RESULTS ============ -->
+<section id="results">
+  <h2><span class="num">06</span>实测结果 <span class="badge verified" style="font-size:12px">本机真跑 · 2026-07-08</span></h2>
+  <p class="sec-sub">同批次运行，靶场 news.ycombinator.com。数据直接来自 <code>bench-results.json</code>。</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="v" style="color:var(--c-cdp)">288</div><div class="l">最省 tokens（CDP 页内提取）</div><div class="sub">最贵路径的 <b>1/48</b></div></div>
+    <div class="kpi"><div class="v" style="color:var(--c-vision)">3043<small style="font-size:15px">ms</small></div><div class="l">最慢延迟（像素视觉）</div><div class="sub">最快路径的 <b>3.7×</b></div></div>
+    <div class="kpi"><div class="v" style="color:var(--critical)">13812</div><div class="l">最费 tokens（未裁剪 a11y 全树）</div><div class="sub">比整页 HTML 还贵</div></div>
+    <div class="kpi"><div class="v" style="color:var(--good)">0%</div><div class="l">字段缺失（API & CDP）</div><div class="sub">结构化路径最稳</div></div>
+  </div>
+
+  <!-- CHART: tokens -->
+  <div class="chart">
+    <h4>送入 LLM 的 token 成本（越低越好）</h4>
+    <p class="cap">这是最能拉开差距的指标——直接决定每次调用的钱和延迟。</p>
+    <div class="bars" id="chart-tokens"></div>
+    <div class="foot">★ CDP 在浏览器内跑 DOM API，只回传精炼结果，token 最低。DOM 正则若把<b>整页 HTML</b> 喂给 LLM 达 8689 tokens，但本地裁剪后可降到 291（图中虚线标注）——「喂原始 HTML」是最常见的浪费。</div>
+  </div>
+
+  <!-- CHART: latency -->
+  <div class="chart">
+    <h4>端到端延迟（越低越好）</h4>
+    <p class="cap">网络两路与 CDP 都在 ~1s 级；视觉因需启动渲染+截图显著更慢。</p>
+    <div class="bars" id="chart-latency"></div>
+    <div class="foot">注：DOM 正则最快（815ms）因为它只是 <code>fetch</code> 纯文本、不启动浏览器；但它把脆性和 token 成本转嫁到了下游。</div>
+  </div>
+
+  <!-- CHART: payload -->
+  <div class="chart">
+    <h4>网络 payload（传输字节，越低越好）</h4>
+    <p class="cap">像素视觉的 PNG 截图是最重的载荷；CDP 只回传抽取结果因而最轻。</p>
+    <div class="bars" id="chart-payload"></div>
+    <div class="foot">对数视角更公平：视觉 124KB 是 CDP 1.2KB 的 <b>约 107×</b>。</div>
+  </div>
+
+  <!-- full data table -->
+  <h3>完整实测数据表</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr>
+        <th>范式路径</th><th>感知形态</th><th class="num">延迟 ms</th><th class="num">LLM tokens</th><th class="num">payload B</th><th class="num">解析步</th><th class="num">字段缺失</th>
+      </tr></thead>
+      <tbody id="data-table"></tbody>
+    </table>
+  </div>
+
+  <div class="callout warn">
+    <div class="h"><span class="ico">⚠</span>三个反直觉的真实发现</div>
+    <b>1. CDP 页内提取是隐藏赢家</b>——token 最低、payload 最小，因为它在浏览器里跑 DOM API 只回传结果。<br>
+    <b>2. a11y 全树竟然最费 token（13812）</b>——完整 AX 树很嘈杂，不裁剪比整页 HTML 还贵，修正了「a11y 一定省 token」的直觉。<br>
+    <b>3. 视觉单张截图 token（1536）反而低于未裁剪文本树</b>——这解释了为何当目标结构混乱时，视觉范式反而有吸引力。
+  </div>
+
+  <h3>同任务、不同数据源 → 结果竟不一致</h3>
+  <p>一个真实工程陷阱：API 路命中的是 Algolia <code>front_page</code> 快照，DOM/CDP 抓的是<b>实时首页</b>，二者内容与排序天然不同。下面是各自实际抽到的前 3 条（均为真实运行输出）：</p>
+  <div class="samples">
+    <div class="sample">
+      <div class="st"><span class="tag-inline"><span class="dot" style="background:var(--c-api)"></span>④ API/MCP 抽到的 Top 3</span></div>
+      <ol>
+        <li>StreetComplete: Fixing OpenStreetMap… <span class="pts">714↑</span> @kls0e</li>
+        <li>Chat Control 1.0 and 2.0 Explained <span class="pts">478↑</span> @gasull</li>
+        <li>A better way to tie gym shorts [video] <span class="pts">472↑</span> @surprisetalk</li>
+      </ol>
+    </div>
+    <div class="sample">
+      <div class="st"><span class="tag-inline"><span class="dot" style="background:var(--c-cdp)"></span>② CDP 抽到的 Top 3（实时）</span></div>
+      <ol>
+        <li>Is The Economist Always Wrong? <span class="pts">40↑</span> @nreece</li>
+        <li>GAO: DOE Prematurely Excluding… <span class="pts">139↑</span> @Jimmc414</li>
+        <li>Tenda firmware hidden backdoor <span class="pts">62↑</span> @miniBill</li>
+      </ol>
+    </div>
+  </div>
+  <p class="foot-note" style="margin-top:12px">→ 选型时别只比「谁快」，还要比「谁拿到的是你要的那份数据」。API 的 <code>front_page</code> 是经排名算法的稳定快照，DOM 是当下瞬时状态——语义不同，无关对错。</p>
+</section>
+
+<!-- ============ 07 BENCH ============ -->
+<section id="bench">
+  <h2><span class="num">07</span>学术基准速查 <span class="badge">⚠ 发布期快照</span></h2>
+  <p class="sec-sub">以下为 2024–2025 初厂商/论文自报数字。站在 2026 视角，SOTA 已显著上升，请按历史读。</p>
+
+  <div class="chart">
+    <h4>OSWorld：像素视觉桌面 Agent vs 人类（成功率 %，越高越好）</h4>
+    <p class="cap">369 个真实电脑任务，跨 Ubuntu/Win/macOS，执行式评测。</p>
+    <div class="bars" id="chart-osworld"></div>
+    <div class="foot">人类 ~72% 是所有 GUI Agent 的天花板参照。发布期最佳模型仅 12.24%，近 60 分的人机鸿沟正是这条赛道的意义所在。</div>
+  </div>
+
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>基准</th><th>覆盖</th><th>关键数字（发布期）</th><th>置信</th></tr></thead>
+      <tbody>
+        <tr><td><b>OSWorld</b></td><td>369 真实电脑任务 · 三系统</td><td>人类 <b>72.36%</b> vs 最佳模型 12.24%（2024 中）；Claude 14.9%→22%；UI-TARS-72B 24.6%</td><td><span class="rate s5">✓ 高</span></td></tr>
+        <tr><td><b>WebVoyager</b></td><td>643 任务 / 15 真实网站 + 90 GAIA</td><td>WebVoyager agent <b>59.1%</b> 成功率</td><td><span class="rate s4">✓ 高</span></td></tr>
+        <tr><td><b>WebArena</b></td><td>可复现真实 Web 环境（NeurIPS'24 Oral）</td><td>Operator 报告 58.1%（⚠ 二手）</td><td><span class="rate s3">⚠ 中</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ============ 08 PICK ============ -->
+<section id="pick">
+  <h2><span class="num">08</span>工程选型：决策树</h2>
+  <p class="sec-sub">从便宜可靠 → 通用昂贵，逐级下降。能不用视觉就不用视觉。</p>
+
+  <div class="tree">
+<span class="q">目标有 API / MCP server 吗?</span>
+├─ 有 ─────────────► <span class="r">④ API/MCP 直连</span> <span class="n">← 永远首选，最快最稳最便宜</span>
+└─ 没有 → <span class="q">只在浏览器里吗?</span>
+      ├─ 是 → <span class="q">网站稳定 & 需高并发/低延迟?</span>
+      │      ├─ 是 → <span class="r">② Playwright/Puppeteer + 选择器</span>
+      │      │        <span class="n">需 LLM 理解/泛化 → browser-use / Stagehand</span>
+      │      └─ 否(多变/长尾/常改版) → <span class="r">⑤ 混合: Skyvern / SoM</span>
+      └─ 否(原生桌面 / Office / IDE / 跨应用) →
+            ├─ a11y 覆盖好? → <span class="r">③ 无障碍树</span> <span class="n">(省 token 更稳)</span>
+            └─ a11y 缺失 / 要最大通用 → <span class="r">① 像素视觉: Claude CU / UI-TARS</span>
+  </div>
+
+  <h3>按场景落地</h3>
+  <div class="tbl-wrap">
+    <table>
+      <thead><tr><th>场景</th><th>推荐范式</th><th>理由</th></tr></thead>
+      <tbody>
+        <tr><td>高频 · Web-only · 延迟/成本敏感</td><td><span class="tag-inline"><span class="dot" style="background:var(--c-cdp)"></span>② DOM/CDP</span></td><td>快、便宜、可断言（实测 CDP 仅 288 tokens）</td></tr>
+        <tr><td>网站长尾 / 频繁改版 / 无稳定 DOM</td><td><span class="tag-inline"><span class="dot" style="background:var(--c-hybrid)"></span>⑤ 混合 (Skyvern)</span></td><td>AI 中介抗选择器脆性</td></tr>
+        <tr><td>生产环境要可控 + 少量 AI 步</td><td><span class="tag-inline"><span class="dot" style="background:var(--c-cdp)"></span>Stagehand</span></td><td>确定性代码里按需插 AI，可预览/自愈</td></tr>
+        <tr><td>要复用为可审计自动化代码</td><td><span class="tag-inline"><span class="dot" style="background:var(--c-dom)"></span>LaVague</span></td><td>LLM 产出 Selenium/Playwright 代码</td></tr>
+        <tr><td>跨原生桌面 / Office / IDE，无 API</td><td><span class="tag-inline"><span class="dot" style="background:var(--c-vision)"></span>① 像素视觉</span></td><td>唯一能覆盖任意 GUI 的路子</td></tr>
+        <tr><td>企业内可控软件栈，追求稳定省钱</td><td><span class="tag-inline"><span class="dot" style="background:var(--c-a11y)"></span>③ a11y + 视觉兜底</span></td><td>结构化、省 token（但需裁剪 AX 树！）</td></tr>
+        <tr><td>目标本就有接口</td><td><span class="tag-inline"><span class="dot" style="background:var(--c-api)"></span>④ API/MCP</span></td><td>别去点 UI</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="two-col" style="margin-top:8px">
+    <div class="callout crit">
+      <div class="h"><span class="ico">⚠</span>反直觉提醒 1</div>
+      <b>能不用视觉就不用视觉。</b>像素视觉是「最后手段的通用性」，不是默认选项——实测它最慢（3×）、payload 最重（107×）、可靠性最低。
+    </div>
+    <div class="callout crit">
+      <div class="h"><span class="ico">⚠</span>反直觉提醒 2</div>
+      <b>纯 LLM Agent ≠ 生产可靠。</b>当前 OS 级视觉 Agent 成功率仍远低于人类，关键流程需人类确认、重试、回滚护栏，或退回 ②/④。
+    </div>
+  </div>
+</section>
+
+<!-- ============ 09 CAVEAT ============ -->
+<section id="caveat">
+  <h2><span class="num">09</span>局限与勘误（诚实交代）</h2>
+  <div class="two-col">
+    <div>
+      <h3>研究覆盖的偏斜</h3>
+      <p>本次深度研究批次中，<b>a11y 无障碍树、MCP/API、纯 Playwright/Puppeteer/Selenium 头对头、Operator/CUA、Project Mariner、OpenAdapt</b> 均未产出经对抗验证的独立论断——这些部分用背景知识（○）补全，置信度低于带引用的 ✓ 项。Demo 实测则独立补上了 a11y / API / CDP / 视觉的真实数字。</p>
+      <h3>已证伪 · 请勿引用</h3>
+      <p>browser-use「89.1% WebVoyager SOTA」「bu-2-0 提速 3–5×」；Stagehand「具体为 CDP-engine」「act/agent/extract 三原语」。</p>
+    </div>
+    <div>
+      <h3>时效性</h3>
+      <p>所有基准数字为 2024–2025 初快照。Claude 14.9%/22%、UI-TARS-72B 24.6%、最佳模型 12.24% 均为发布期。站在 2026-07，OSWorld/WebVoyager/WebArena 的 SOTA 已明显更高、人机差距大幅收窄。<b>范式间相对优劣结论仍成立，具体百分比会过时。</b></p>
+      <h3>实测的边界</h3>
+      <p>Demo 数据是<b>单次本机运行</b>，延迟受网络波动影响；token 为字符数/4 的估算（视觉按 (w×h)/750）。它证明的是<b>范式间的数量级差异</b>，非精确基准。脚本 <code>bench-all.mjs</code> 已随报告落盘，可复跑。</p>
+    </div>
+  </div>
+</section>
+
+</main>
+
+<footer class="wrap">
+  <hr class="soft">
+  <h3>主要来源</h3>
+  <ul class="src-list">
+    <li>Anthropic — <a href="https://www.anthropic.com/news/3-5-models-and-computer-use">3.5 Models and Computer Use</a></li>
+    <li>Anthropic — <a href="https://www.anthropic.com/news/developing-computer-use">Developing Computer Use</a></li>
+    <li>Anthropic — <a href="https://www.anthropic.com/engineering/code-execution-with-mcp">Code Execution with MCP</a></li>
+    <li>ByteDance — <a href="https://arxiv.org/abs/2501.12326">UI-TARS (arXiv 2501.12326)</a></li>
+    <li>OSWorld — <a href="https://arxiv.org/abs/2404.07972">arXiv 2404.07972</a> · <a href="https://osworld-v1.xlang.ai">osworld-v1.xlang.ai</a></li>
+    <li>WebVoyager — <a href="https://arxiv.org/abs/2401.13919">arXiv 2401.13919</a></li>
+    <li>GUI Agents Survey — <a href="https://arxiv.org/abs/2411.18279">arXiv 2411.18279</a></li>
+    <li>Set-of-Mark — <a href="https://arxiv.org/abs/2310.11441">arXiv 2310.11441</a></li>
+    <li><a href="https://github.com/browser-use/browser-use">browser-use</a> · <a href="https://github.com/browserbase/stagehand">Stagehand</a> · <a href="https://github.com/Skyvern-AI/skyvern">Skyvern</a> · <a href="https://github.com/lavague-ai/LaVague">LaVague</a></li>
+    <li>WebArena — <a href="https://webarena.dev/">webarena.dev</a></li>
+  </ul>
+  <hr class="soft">
+  <p class="foot-note">本报告由深度研究工作流（104 agent · 22 来源 · 21 条论断经 3 票对抗验证）+ 本机六路实测生成。置信标注：<span class="badge verified">✓ 已验证</span> 带引用且通过验证 · <span class="badge">⚠/○</span> 二手或背景补全。基准数字均为发布期快照，请按历史读。</p>
+</footer>
+
+<!-- 代码弹层 -->
+<div class="modal-bd" id="modal-bd">
+  <div class="code-modal" id="code-modal" style="--bar:var(--c-cdp)">
+    <div class="mhead">
+      <span class="sw"></span>
+      <span class="t" id="modal-title">实现代码</span>
+      <span class="sub" id="modal-sub"></span>
+      <button class="x" id="modal-x" title="关闭">×</button>
+    </div>
+    <div class="note" id="modal-note"></div>
+    <pre id="modal-code"></pre>
+  </div>
+</div>
+
+<script>
+// ====== 各范式真实实现代码（取自 bench-all.mjs / demo-server.mjs），点"看代码"弹出 ======
+const CODE = {
+  api: {
+    color:'var(--c-api)',
+    sub:'runAPI() · 后端 fetch 公开 API',
+    note:'最省心的一条：HN 有公开 <b>Algolia API</b>，直接请求就拿到结构化 JSON，无需渲染、无需解析。现实前提是"目标恰好有 API"。',
+    code:
+`async function runAPI() {
+  // 直接请求 HN 官方 Algolia API —— 拿回就是干净 JSON
+  const url = 'https://hn.algolia.com/api/v1/search?tags=front_page&hitsPerPage=10';
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  const text = await res.text();
+
+  // 字段已结构化，一步 map 到位，零解析
+  const items = JSON.parse(text).hits.map(h => ({
+    title: h.title, points: h.points,
+    author: h.author, comments: h.num_comments,
+  }));
+  return { llmTokens: toks(JSON.stringify(items)), parseSteps: 1 };
+}`
+  },
+  cdp: {
+    color:'var(--c-cdp)',
+    sub:'runCDP() · 开真 Chromium，页内跑 DOM API',
+    note:'<b>CDP = Chrome DevTools Protocol（Chrome 开发者工具协议）</b>，驱动真浏览器的底层通道，Playwright/Puppeteer 都走它。分水岭是 <span class="tag-k">page.evaluate</span>：把提取代码送进页面内部用真 DOM API 跑，只回传 10 条干净结果 —— 稳、且 token 最低（288）。',
+    code:
+`async function runCDP() {
+  const browser = await getBrowser();          // 真 Chromium（Playwright 经 CDP 驱动）
+  const page = await browser.newPage();
+  await page.goto('https://news.ycombinator.com/');  // 内核真解析 HTML，建出完整 DOM 树
+
+  // ★关键★ page.evaluate 把这段 JS 经 CDP 送进「页面内部」执行
+  const items = await page.evaluate((n) => {
+    const rows = document.querySelectorAll('tr.athing');   // 真 DOM 查询，不是正则
+    const o = [];
+    for (let i = 0; i < Math.min(n, rows.length); i++) {
+      const r = rows[i], s = r.nextElementSibling;         // 按 DOM 结构导航，稳
+      o.push({
+        title:  r.querySelector('.titleline > a')?.textContent,
+        points: parseInt(s?.querySelector('.score')?.textContent) || null,
+        author: s?.querySelector('.hnuser')?.textContent,
+      });
+    }
+    return o;   // 只把 10 条精炼结果传回 Node（跨进程仅 1.2KB，而非 35KB 整页）
+  }, 10);
+  return { llmTokens: toks(JSON.stringify(items)), parseSteps: 2 };
+}`
+  },
+  a11y: {
+    color:'var(--c-a11y)',
+    sub:'runA11y() · 裸调 CDP 命令拉无障碍树',
+    note:'这条是<b>不经封装、直接说 CDP 协议</b>：<span class="tag-k">Accessibility.getFullAXTree</span> 是 CDP 原生命令，Playwright 普通 API 不暴露，只能降到 CDP 层拿。反直觉——完整 AX 树很嘈杂，不裁剪比整页 HTML 还费 token（13812）。',
+    code:
+`async function runA11y() {
+  const page = await browser.newPage();
+  await page.goto('https://news.ycombinator.com/');
+
+  // 拿到「裸 CDP 会话」，直接发 CDP 原生命令（Playwright 普通 API 没有这个）
+  const client = await page.context().newCDPSession(page);
+  await client.send('Accessibility.enable');
+  const { nodes } = await client.send('Accessibility.getFullAXTree');   // 拉整棵无障碍树
+
+  const slim = nodes
+    .map(n => ({ role: n.role?.value, name: n.name?.value }))
+    .filter(n => n.name);
+  // 完整语义树很啰嗦 —— axNodes=1624，token 反而最高
+  return { llmTokens: toks(JSON.stringify(slim)), axNodes: nodes.length };
+}`
+  },
+  uia: {
+    color:'var(--c-a11y)',
+    title:'③b 桌面 a11y · Windows UIA',
+    sub:'桌面 a11y · Windows UI Automation（本机实测）',
+    note:'和浏览器 <span class="tag-k">getFullAXTree</span> 同一范式，只是入口换成 <b>OS 无障碍 API</b>：Windows 用 <span class="tag-k">UI Automation</span>，macOS 换 <span class="tag-k">AXUIElement</span>，Linux 换 <span class="tag-k">AT-SPI</span>。按<b>控件名</b>点，全程零屏幕坐标；App 只要支持读屏就免费暴露语义树。',
+    code:
+`# Python + uiautomation —— 在真实系统计算器上跑，算 7 × 8
+import uiautomation as auto, subprocess, time
+subprocess.Popen('calc.exe'); time.sleep(2)
+
+calc = auto.WindowControl(searchDepth=1, Name='Calculator')
+
+# ① 读控件树 = 桌面版 AX 树（纯语义，无像素）
+def walk(ctrl, depth=0):
+    for c in ctrl.GetChildren():
+        print('  '*depth, c.ControlTypeName, c.Name)   # role + name，和网页同构
+        walk(c, depth+1)
+walk(calc)
+
+# ② 按「控件名」语义操作 —— 调 UIA 的 Invoke，不是模拟鼠标点像素
+def tap(name):
+    btn = calc.ButtonControl(Name=name)
+    btn.GetInvokePattern().Invoke()                     # 语义级"激活控件"
+for n in ['Seven', 'Multiply by', 'Eight', 'Equals']:
+    tap(n)
+
+# ③ 读回结果 —— 从结果控件的语义属性取，非 OCR 截图
+disp = calc.TextControl(AutomationId='CalculatorResults')
+print(disp.Name)          # -> "Display is 56"   ✓ 7×8=56，pixel_coordinates_used=False
+
+# 对照浏览器版：
+#   浏览器  page.context().newCDPSession → Accessibility.getFullAXTree
+#   桌面App uiautomation → 遍历 ControlType 树 (UI Automation)`
+  },
+  skyvern: {
+    color:'var(--c-hybrid)',
+    title:'⑤ 混合范式 · Skyvern / Set-of-Marks',
+    sub:'截图 + DOM + 标注框 → LLM 每步重新理解页面',
+    note:'纯让 LLM「看截图说坐标」很不准（grounding 难）。<b>Set-of-Marks（SoM）</b>把它降级成「从有限选项里选编号」：先用 DOM 抽出所有可交互元素，在截图上叠<b>编号方框</b>，LLM 只需回答「点③、在①输入」，程序再把编号映射回真实元素。<b>Skyvern</b> 就是这套的产品化——不写死选择器，每步重新看页面，因此<b>抗改版</b>。代价：每步都跑多模态 LLM，慢且贵。',
+    code:
+`# 混合范式的一步循环（Skyvern 的思路，SoM 是其中的关键技巧）
+# ── ① 拿两路感知：截图(视觉) + DOM(结构) ──────────────
+screenshot = page.screenshot()
+elements   = page.query_all_interactive()   # 从 DOM/a11y 抽出可点元素
+
+# ── ② Set-of-Marks：给每个元素叠一个编号方框 ──────────
+#     ①[搜索框]  ②[登录]  ③[注册] ...
+marked_img = draw_numbered_boxes(screenshot, elements)
+#     关键：把"说像素坐标"(模型很弱) 降级成"选编号"(模型很强)
+
+# ── ③ 多模态 LLM 看带标号的截图，输出编号级动作 ────────
+action = llm.decide(
+    image  = marked_img,
+    task   = "登录后进入订单页",
+    schema = {"op": "click|type", "mark": "int", "text": "str?"}
+)
+#     LLM 回: {"op":"type","mark":1,"text":"user@x.com"}  → 在①输入
+#             {"op":"click","mark":2}                      → 点②登录
+
+# ── ④ 编号映射回真实元素，交给 Playwright 执行 ─────────
+target = elements[action["mark"]]            # ← 不写死 XPath/CSS！
+if action["op"] == "click": target.click()
+elif action["op"] == "type": target.fill(action["text"])
+
+# 为什么抗改版：网站换了 class 名 / 挪了位置，选择器会挂，
+#   但"重新截图 → 重新标号 → 重新理解"每步都是即时的，照样点得到。
+# 代价：④之前每一步都要跑一次视觉 LLM 推理 —— 慢、贵。
+# 对照：② Playwright 写死 click('#login')，改版即挂但快而便宜。`
+  },
+  dom: {
+    color:'var(--c-dom)',
+    sub:'runDOM() · 后端抓整页 HTML + 正则',
+    note:'<b>没有浏览器</b>，纯 HTTP 抓回整页 HTML 字符串，只能靠切割 + 正则"猜"结构。轻快但脆——HN 一改 class 名正则就废；且整页 HTML 喂 LLM 会 token 爆炸（8689 vs 精炼 291）。',
+    code:
+`async function runDOM() {
+  // 纯 fetch，拿回的是一大坨整页 HTML 文本
+  const res = await fetch('https://news.ycombinator.com/', ...);
+  const html = await res.text();
+
+  // 没有 DOM 树 —— 只能字符串切割 + 正则去抠字段
+  const rows = html.split('class="athing').slice(1, 11);
+  const rest = html.split('class="subtext"');
+  for (let i = 0; i < 10; i++) {
+    const b = rows[i], sub = rest[i + 1] || '';
+    items.push({
+      title:  (b.match(/class="titleline"><a[^>]*>([^<]+)<\\/a>/) || [])[1],
+      points: +((sub.match(/class="score"[^>]*>(\\d+)/)  || [])[1]),
+      author: (sub.match(/class="hnuser">([^<]+)</)      || [])[1],
+    });
+  }
+  // 整页 HTML 的 token（若直接喂 LLM）＝ 8689，精炼后只需 291
+  return { llmTokens: toks(html), llmTokensTrimmed: toks(JSON.stringify(items)) };
+}`
+  },
+  vision: {
+    color:'var(--c-vision)',
+    sub:'runVision() · 真截图 + 视觉 token 估算',
+    note:'唯一"没有 API、没有 DOM 也能干"的通用路子：<span class="tag-k">page.screenshot()</span> 生成真 PNG。视觉 token 按 Anthropic 口径 <span class="tag-k">(宽×高)/750</span> 估算 ≈ 1536。代价：延迟 3×、流量 124KB（107×）。',
+    code:
+`async function runVision() {
+  const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+  await page.goto('https://news.ycombinator.com/');
+
+  // 真截图 —— 生成真实 PNG 字节
+  const buf = await page.screenshot();
+  const vp = page.viewportSize();
+
+  // 视觉 token 按 Anthropic 估算式：(宽 × 高) / 750
+  const imgToks = (w, h) => Math.round((w * h) / 750);   // 1280×900 ≈ 1536
+
+  return {
+    wirePayload: buf.length,                  // 真实 PNG 字节数 ≈ 124KB
+    llmTokens: imgToks(vp.width, vp.height),   // ≈ 1536 视觉 token
+  };
+}`
+  },
+};
+
+
+const DATA = {
+  api:    { label:"④ API/MCP 直连",   perc:"结构化 JSON",        color:"var(--c-api)",    ms:1056, tokens:294,   payload:11172, steps:1, miss:0 },
+  cdp:    { label:"②b CDP 页内提取",  perc:"DOM (页内 evaluate)", color:"var(--c-cdp)",    ms:1220, tokens:288,   payload:1153,  steps:2, miss:0 },
+  a11y:   { label:"③ 无障碍树 a11y",  perc:"语义控件树 AX",      color:"var(--c-a11y)",   ms:1429, tokens:13812, payload:55249, steps:null, miss:null },
+  dom:    { label:"② DOM 正则解析",   perc:"原始 HTML",          color:"var(--c-dom)",    ms:815,  tokens:8689,  payload:34754, steps:5, miss:0, trimmed:291 },
+  vision: { label:"① 像素视觉截图",   perc:"屏幕截图 PNG",       color:"var(--c-vision)", ms:3043, tokens:1536,  payload:123661, steps:null, miss:null },
+};
+const ORDER = ["vision","a11y","dom","api","cdp"];
+
+function bar(container, valueKey, {fmt, max, note}={}) {
+  const el = document.getElementById(container);
+  const rows = ORDER.map(k => ({k, ...DATA[k]}));
+  const mx = max || Math.max(...rows.map(r=>r[valueKey]));
+  el.innerHTML = rows.map(r=>{
+    const v = r[valueKey];
+    const pct = Math.max(2, (v/mx)*100);
+    const disp = fmt ? fmt(v,r) : v;
+    return `<div class="bar-row" title="${r.label}: ${disp}">
+      <div class="name">${r.label}</div>
+      <div class="track"><div class="fill" style="width:0%;background:${r.color}" data-w="${pct}"></div></div>
+      <div class="val">${disp}</div>
+    </div>`;
+  }).join("");
+}
+
+const fmtInt = v => v.toLocaleString();
+const fmtMs  = v => v.toLocaleString()+'<small> ms</small>';
+const fmtKB  = (v)=> (v>=1024? (v/1024).toFixed(1)+'<small> KB</small>' : v+'<small> B</small>');
+
+bar("chart-tokens","tokens",{fmt:(v,r)=> r.k==='dom' ? `${fmtInt(v)} <small>→裁剪291</small>` : fmtInt(v)});
+bar("chart-latency","ms",{fmt:fmtMs});
+bar("chart-payload","payload",{fmt:fmtKB});
+
+// OSWorld chart (separate dataset)
+(function(){
+  const el = document.getElementById("chart-osworld");
+  const rows = [
+    {label:"人类基准", v:72.36, color:"var(--good)"},
+    {label:"UI-TARS-72B (50步)", v:24.6, color:"var(--c-vision)"},
+    {label:"Claude 3.5 (22步)", v:22.0, color:"var(--c-hybrid)"},
+    {label:"Claude 3.5 (纯截图)", v:14.9, color:"var(--c-a11y)"},
+    {label:"发布期最佳模型", v:12.24, color:"var(--muted)"},
+  ];
+  const mx = 100;
+  el.innerHTML = rows.map(r=>`<div class="bar-row" title="${r.label}: ${r.v}%">
+    <div class="name">${r.label}</div>
+    <div class="track"><div class="fill" style="width:0%;background:${r.color}" data-w="${(r.v/mx)*100}"></div></div>
+    <div class="val">${r.v}<small>%</small></div></div>`).join("");
+})();
+
+// data table
+(function(){
+  const tb = document.getElementById("data-table");
+  const rows = ["api","cdp","a11y","dom","vision"].map(k=>({k,...DATA[k]}));
+  tb.innerHTML = rows.map(r=>{
+    const miss = r.miss===null? '<span style="color:var(--muted)">—</span>' : (r.miss===0? '<span class="rate s5">0%</span>' : (r.miss*100)+'%');
+    const steps = r.steps===null? '<span style="color:var(--muted)">—</span>' : r.steps;
+    const tok = r.trimmed? `${r.tokens.toLocaleString()} <small style="color:var(--muted)">/裁剪 ${r.trimmed}</small>` : r.tokens.toLocaleString();
+    return `<tr>
+      <td><span class="tag-inline"><span class="dot" style="background:${r.color}"></span><b>${r.label}</b></span> <button class="code-btn" data-code="${r.k}">👁 看代码</button></td>
+      <td style="color:var(--ink-2)">${r.perc}</td>
+      <td class="num">${r.ms.toLocaleString()}</td>
+      <td class="num">${tok}</td>
+      <td class="num">${r.payload.toLocaleString()}</td>
+      <td class="num">${steps}</td>
+      <td class="num">${miss}</td>
+    </tr>`;
+  }).join("");
+})();
+
+// dots renderer
+document.querySelectorAll('.dots').forEach(d=>{
+  const on = +d.dataset.on; const dc = d.style.getPropertyValue('--dc') || 'var(--c-cdp)';
+  let h='';
+  for(let i=0;i<5;i++) h+=`<i class="${i<on?'on':''}" style="${i<on?`background:${dc}`:''}"></i>`;
+  d.innerHTML=h;
+});
+
+// animate bars on view
+const io = new IntersectionObserver((es)=>{
+  es.forEach(e=>{ if(e.isIntersecting){ e.target.querySelectorAll('.fill').forEach(f=>{ f.style.width = f.dataset.w+'%'; }); io.unobserve(e.target); } });
+},{threshold:.2});
+document.querySelectorAll('.chart').forEach(c=>io.observe(c));
+
+// 看代码弹层
+const modalBd = document.getElementById('modal-bd');
+function openCode(key){
+  const c = CODE[key]; if(!c) return;
+  document.getElementById('code-modal').style.setProperty('--bar', c.color);
+  document.getElementById('modal-title').textContent = c.title || (DATA[key] && DATA[key].label) || '实现代码';
+  document.getElementById('modal-sub').textContent = c.sub;
+  document.getElementById('modal-note').innerHTML = c.note;
+  document.getElementById('modal-code').textContent = c.code;
+  modalBd.classList.add('show');
+}
+function closeCode(){ modalBd.classList.remove('show'); }
+document.querySelectorAll('.code-btn').forEach(b=>b.onclick=()=>openCode(b.dataset.code));
+document.getElementById('modal-x').onclick = closeCode;
+modalBd.onclick = (e)=>{ if(e.target===modalBd) closeCode(); };
+document.addEventListener('keydown',(e)=>{ if(e.key==='Escape') closeCode(); });
+</script>
+
+</body>
+</html>
